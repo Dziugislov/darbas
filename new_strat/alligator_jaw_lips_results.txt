@@ -1,1 +1,0 @@
-jaw_period,teeth_period,lips_period,trades,sharpe_ratio
