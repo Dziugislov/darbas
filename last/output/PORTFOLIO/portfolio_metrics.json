@@ -1,0 +1,43 @@
+{
+    "split_date": "2021-09-14 13:25:00",
+    "final_capital": 1306989.9999999998,
+    "total_return_dollars": 306989.99999999977,
+    "total_return_percent": 30.698999999999987,
+    "sharpe_full": 0.2859789049728989,
+    "sharpe_in_sample": 0.36026638613923206,
+    "sharpe_out_sample": 0.19465118331576506,
+    "max_drawdown": -11.518024567357736,
+    "total_trades": 97,
+    "in_sample_trades": 97,
+    "out_sample_trades": 0,
+    "in_sample_pnl": 216352.5,
+    "out_sample_pnl": 90637.49999999997,
+    "in_sample_return_pct": 21.63525,
+    "out_sample_return_pct": 9.063749999999997,
+    "instruments": {
+        "ES=F": {
+            "total_trades": 8,
+            "in_sample_trades": 8,
+            "out_sample_trades": 0,
+            "pnl": 125075.0
+        },
+        "SI=F": {
+            "total_trades": 29,
+            "in_sample_trades": 29,
+            "out_sample_trades": 0,
+            "pnl": 24594.999999999975
+        },
+        "GC=F": {
+            "total_trades": 16,
+            "in_sample_trades": 16,
+            "out_sample_trades": 0,
+            "pnl": 61200.00000000005
+        },
+        "CC": {
+            "total_trades": 44,
+            "in_sample_trades": 44,
+            "out_sample_trades": 0,
+            "pnl": 96120.0
+        }
+    }
+}
