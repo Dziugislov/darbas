@@ -8,6 +8,7 @@ import time
 import random
 import datetime
 import concurrent.futures
+import multiprocessing
 
 from deap import base, creator, tools, algorithms
 
@@ -17,17 +18,101 @@ import read_ts
 # Import configuration (defines: TICKER, DATA_DIR, SMA_MIN, SMA_MAX, STEP, POPULATION_SIZE, NUM_GENERATIONS,
 # CROSSOVER_PROB, MUTATION_PROB, HALL_OF_FAME_SIZE, TRAIN_TEST_SPLIT, MIN_TRADES, MAX_TRADES, 
 # RESULTS_FILE, TRADING_CAPITAL, ATR_PERIOD, RANDOM_SEED, START_DATE, END_DATE)
-from input_gen import *
+from input_gen import (TICKER, SMA_MIN, SMA_MAX, STEP, POPULATION_SIZE, NUM_GENERATIONS,
+                      CROSSOVER_PROB, MUTATION_PROB, HALL_OF_FAME_SIZE, TRAIN_TEST_SPLIT,
+                      MIN_TRADES, MAX_TRADES, RESULTS_FILE, TRADING_CAPITAL, ATR_PERIOD,
+                      RANDOM_SEED, START_DATE, END_DATE)
 
 # Replace two‐SMA strategy with your new three‐SMA AlligatorSMAStrategy
 from Alligator_SMA_Strategy import AlligatorSMAStrategy
 
-# Global caches
+# Global variables needed for evaluate_individual
+data = None
+big_point_value = None
+slippage = None
+original_start_idx = None
+
+# These are now properly imported from input_gen
+TRADING_CAPITAL = TRADING_CAPITAL
+ATR_PERIOD = ATR_PERIOD
+MIN_TRADES = MIN_TRADES
+MAX_TRADES = MAX_TRADES
+TRAIN_TEST_SPLIT = TRAIN_TEST_SPLIT
+
+# Global caches (these are okay to be global as they're just for tracking)
 evaluated_combinations = {}
 evaluation_counter = 0
 cache_hit_counter = 0
 
+def evaluate_individual(args):
+    """
+    args = (individual, data_dict)
+    individual = [short_sma, med_sma, long_sma]
+    data_dict contains all the necessary data and parameters
+    Returns a tuple (sharpe,)
+    """
+    individual, data_dict = args
+    short_sma, med_sma, long_sma = individual
+    key = (short_sma, med_sma, long_sma)
+    
+    # Use the shared cache passed from the main process
+    shared_cache = data_dict['evaluated_combinations']
+
+    if key in shared_cache:
+        return shared_cache[key]
+    
+    # Enforce short < med < long
+    if not (short_sma < med_sma < long_sma):
+        result = (-999999.0, 0)
+        shared_cache[key] = result
+        return result
+    
+    ga_strategy = AlligatorSMAStrategy(
+        short_sma=short_sma,
+        med_sma=med_sma,
+        long_sma=long_sma,
+        big_point_value=data_dict['big_point_value'],
+        slippage=data_dict['slippage'],
+        capital=data_dict['TRADING_CAPITAL'],
+        atr_period=data_dict['ATR_PERIOD']
+    )
+    
+    temp = data_dict['data'].copy()
+    temp = ga_strategy.apply_strategy(temp, strategy_name="Strategy")
+    
+    if data_dict['original_start_idx'] is not None:
+        eval_data = temp.iloc[data_dict['original_start_idx']:].copy()
+    else:
+        eval_data = temp.copy()
+    
+    split_idx = int(len(eval_data) * data_dict['TRAIN_TEST_SPLIT'])
+    train_data = eval_data.iloc[:split_idx]
+    
+    result = (-999999.0, 0) # Default result with trades = 0
+    try:
+        if 'Daily_PnL_Strategy' in train_data.columns and len(train_data) > 0:
+            dr = train_data['Daily_PnL_Strategy'].dropna()
+            if len(dr) > 0:
+                std = dr.std()
+                mean = dr.mean()
+                if std > 0 and not np.isnan(std) and not np.isnan(mean):
+                    sharpe = (mean / std) * np.sqrt(252)
+                    trade_count = train_data['Position_Change_Strategy'].sum()
+                    if trade_count < data_dict['MIN_TRADES'] or trade_count > data_dict['MAX_TRADES']:
+                        result = (-999999.0, trade_count) # Penalize but store trades
+                    else:
+                        result = (sharpe, trade_count) # Return both
+    except Exception as e:
+        print(f"Error in evaluation: {str(e)}")
+        result = (-999999.0, 0)
+    
+    # Store result in the shared cache
+    shared_cache[key] = result
+    return result
+
 def main():
+    global data, big_point_value, slippage, original_start_idx
+    
     overall_start_time = time.time()
     
     WORKING_DIR = "."
@@ -144,66 +229,24 @@ def main():
     print("\nStarting GA optimization for three‐SMA AlligatorSMAStrategy...")
     print(f"Population size: {POPULATION_SIZE}, Generations: {NUM_GENERATIONS}")
     random.seed(RANDOM_SEED)
+
+    # For multiprocessing, we need to use a Manager to share the cache
+    manager = multiprocessing.Manager()
+    evaluated_combinations_shared = manager.dict()
     
-    # Fitness function
-    def evaluate_individual(individual):
-        """
-        individual = [short_sma, med_sma, long_sma]
-        Returns a tuple (sharpe,)
-        """
-        global evaluation_counter, cache_hit_counter
-        
-        short_sma, med_sma, long_sma = individual
-        key = (short_sma, med_sma, long_sma)
-        
-        if key in evaluated_combinations:
-            cache_hit_counter += 1
-            return evaluated_combinations[key]
-        
-        evaluation_counter += 1
-        
-        # Enforce short < med < long
-        if not (short_sma < med_sma < long_sma):
-            evaluated_combinations[key] = (-999999.0,)
-            return (-999999.0,)
-        
-        ga_strategy = AlligatorSMAStrategy(
-            short_sma=short_sma,
-            med_sma=med_sma,
-            long_sma=long_sma,
-            big_point_value=big_point_value,
-            slippage=slippage,
-            capital=TRADING_CAPITAL,
-            atr_period=ATR_PERIOD
-        )
-        
-        temp = data.copy()
-        temp = ga_strategy.apply_strategy(temp, strategy_name="Strategy")
-        
-        if original_start_idx is not None:
-            eval_data = temp.iloc[original_start_idx:].copy()
-        else:
-            eval_data = temp.copy()
-        
-        split_idx = int(len(eval_data) * TRAIN_TEST_SPLIT)
-        train_data = eval_data.iloc[:split_idx]
-        
-        if 'Daily_PnL_Strategy' in train_data.columns and len(train_data) > 0:
-            dr = train_data['Daily_PnL_Strategy']
-            if dr.std() > 0 and dr.sum() != 0:
-                sharpe = (dr.mean() / dr.std()) * np.sqrt(252)
-                trade_count = train_data['Position_Change_Strategy'].sum()
-                if trade_count < MIN_TRADES or trade_count > MAX_TRADES:
-                    result = (-999999.0,)
-                else:
-                    result = (sharpe,)
-            else:
-                result = (-999999.0,)
-        else:
-            result = (-999999.0,)
-        
-        evaluated_combinations[key] = result
-        return result
+    # Create data dictionary for parallel processing
+    data_dict = {
+        'data': data,
+        'big_point_value': big_point_value,
+        'slippage': slippage,
+        'original_start_idx': original_start_idx,
+        'TRADING_CAPITAL': TRADING_CAPITAL,
+        'ATR_PERIOD': ATR_PERIOD,
+        'MIN_TRADES': MIN_TRADES,
+        'MAX_TRADES': MAX_TRADES,
+        'TRAIN_TEST_SPLIT': TRAIN_TEST_SPLIT,
+        'evaluated_combinations': evaluated_combinations_shared # Pass the shared dict
+    }
     
     # Custom mutation: ensure short < med < long
     def custom_mutation(individual, indpb):
@@ -258,7 +301,7 @@ def main():
         del creator.FitnessMax
     if 'Individual' in dir(creator):
         del creator.Individual
-    creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+    creator.create("FitnessMax", base.Fitness, weights=(1.0, 0.0)) # Optimize for Sharpe, carry trades
     creator.create("Individual", list, fitness=creator.FitnessMax)
     
     toolbox = base.Toolbox()
@@ -284,7 +327,7 @@ def main():
     toolbox.register("select", tools.selTournament, tournsize=3)
     
     hall_of_fame = tools.HallOfFame(maxsize=HALL_OF_FAME_SIZE)
-    stats = tools.Statistics(lambda ind: ind.fitness.values)
+    stats = tools.Statistics(lambda ind: ind.fitness.values[0]) # Only track stats for the first value (Sharpe)
     stats.register("avg", np.mean)
     stats.register("min", np.min)
     stats.register("max", np.max)
@@ -312,63 +355,136 @@ def main():
         last_update = current_time
     
     # Modify the eaSimple algorithm to include progress updates
+    print("\nStarting genetic algorithm optimization...")
+    print(f"Population size: {POPULATION_SIZE}, Generations: {NUM_GENERATIONS}")
+    print(f"Using genetic algorithm parameters from input.py")
+    start_time = time.time()
+    
+    # Debug: Check the unique values in the initial population
+    short_smas = [ind[0] for ind in pop]
+    med_smas = [ind[1] for ind in pop]
+    long_smas = [ind[2] for ind in pop]
+    print("\nDEBUG: Initial population statistics:")
+    print(f"Short SMAs range: {min(short_smas)} to {max(short_smas)}")
+    print(f"Med SMAs range: {min(med_smas)} to {max(med_smas)}")
+    print(f"Long SMAs range: {min(long_smas)} to {max(long_smas)}")
+    print(f"\nVerifying step size = {STEP}: All values should be of form {SMA_MIN} + n*{STEP}")
+    
     for gen in range(NUM_GENERATIONS):
-        print(f"Starting generation {gen}...")  # Debugging print
+        gen_start_time = time.time()
+        print(f"\nGeneration {gen}/{NUM_GENERATIONS} ({gen/NUM_GENERATIONS*100:.1f}%)")
+        print("=" * 50)
+        
         # Select the next generation individuals
+        print("Selecting individuals...")
         offspring = tools.selTournament(pop, len(pop), tournsize=3)
-        # Clone the selected individuals
         offspring = list(map(toolbox.clone, offspring))
         
-        # Apply crossover and mutation
+        # Apply crossover
+        print("Applying crossover...")
+        crossover_count = 0
         for i in range(1, len(offspring), 2):
             if i < len(offspring) - 1:
                 if random.random() < CROSSOVER_PROB:
                     offspring[i], offspring[i+1] = custom_crossover(offspring[i], offspring[i+1])
+                    crossover_count += 2
             if i % 100 == 0:
-                print(f"Crossover progress: {i}/{len(offspring)}")  # Crossover progress
+                print(f"\rCrossover progress: {i}/{len(offspring)} pairs processed", end="")
+        print(f"\nCompleted crossover: {crossover_count} individuals modified")
         
+        # Apply mutation
+        print("\nApplying mutation...")
+        mutation_count = 0
         for i in range(len(offspring)):
             if random.random() < MUTATION_PROB:
                 offspring[i], = custom_mutation(offspring[i], MUTATION_PROB)
+                mutation_count += 1
             if i % 100 == 0:
-                print(f"Mutation progress: {i}/{len(offspring)}")  # Mutation progress
+                print(f"\rMutation progress: {i}/{len(offspring)} individuals processed", end="")
+        print(f"\nCompleted mutation: {mutation_count} individuals modified")
         
         # Evaluate the individuals with an invalid fitness using parallel processing
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+        print(f"\nEvaluating {len(invalid_ind)} individuals using parallel processing...")
+        evaluation_start = time.time()
         with concurrent.futures.ProcessPoolExecutor() as executor:
-            fitnesses = list(executor.map(toolbox.evaluate, invalid_ind))
-        for idx, (ind, fit) in enumerate(zip(invalid_ind, fitnesses)):
+            futures = []
+            for ind in invalid_ind:
+                futures.append(executor.submit(toolbox.evaluate, (ind, data_dict)))
+            
+            completed = 0
+            for future in concurrent.futures.as_completed(futures):
+                completed += 1
+                if completed % 50 == 0:  # Update progress every 50 evaluations
+                    elapsed = time.time() - evaluation_start
+                    progress = completed / len(invalid_ind) * 100
+                    speed = completed / elapsed if elapsed > 0 else 0
+                    remaining = (len(invalid_ind) - completed) / speed if speed > 0 else 0
+                    print(f"\rProgress: {completed}/{len(invalid_ind)} ({progress:.1f}%) - "
+                          f"Speed: {speed:.1f} evals/s - "
+                          f"Est. remaining: {remaining:.1f}s", end="")
+            
+            # Collect all results
+            fitnesses = [f.result() for f in futures]
+            print("\nEvaluation complete!")
+        
+        # Assign fitnesses back to the individuals
+        for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
-            if idx % 100 == 0:
-                print(f"Fitness evaluation progress: {idx}/{len(invalid_ind)}")  # Fitness evaluation progress
+
+        # DEBUG: Check fitness validity
+        valid_count = sum(1 for ind in offspring if ind.fitness.valid)
+        print(f"DEBUG: Found {valid_count} valid individuals in offspring after evaluation.")
         
         # Replace the old population by the new one
         pop[:] = offspring
         
-        # Update hall of fame
-        hall_of_fame.update(pop)
+        # Update hall of fame and stats only if there are valid individuals
+        if valid_count > 0:
+            hall_of_fame.update(pop)
+            record = stats.compile(pop)
+            logbook.record(gen=gen, evals=len(invalid_ind), **record)
+            print(f"\nGen {gen} Stats: {record}")
+        else:
+            print("\nWarning: No valid individuals found in generation. Skipping Hall of Fame and stats update.")
+            logbook.record(gen=gen, evals=len(invalid_ind))
+
+        # --- Generation timing stats ---
+        gen_time = time.time() - gen_start_time
+        total_time = time.time() - start_time
+        avg_time_per_gen = total_time / (gen + 1)
+        remaining_gens = NUM_GENERATIONS - (gen + 1)
+        est_remaining = avg_time_per_gen * remaining_gens
+        print(f"Generation time: {gen_time:.1f}s | Avg time/gen: {avg_time_per_gen:.1f}s | Est. remaining: {est_remaining/60:.1f}m")
         
-        # Update statistics
-        record = stats.compile(pop)
-        logbook.record(gen=gen, evals=len(invalid_ind), **record)
-        
-        # Update progress
-        update_progress(gen)
-        print(f"Completed generation {gen}.")  # Debugging print
-    
     print("\nOptimization complete!")
+    
+    # Print top results
+    print("\n--- TOP GENETIC ALGORITHM RESULTS ---")
+    for idx, individual in enumerate(hall_of_fame):
+        if idx < 20 and individual[0] < individual[1] < individual[2]:  # Only print valid combinations
+            print(f"Top {idx+1}: Short={individual[0]}, Med={individual[1]}, Long={individual[2]}, "
+                  f"Sharpe={individual.fitness.values[0]:.6f}")
+        if idx >= 20:
+            break
     
     # Debugging print to check post-optimization flow
     print("Post-optimization: Starting final operations...")
     
+    if not hall_of_fame:
+        print("\nERROR: Hall of Fame is empty. No valid solutions were found during the optimization.")
+        print("This might be because the constraints (like MIN_TRADES) were too strict, or all potential solutions resulted in an error during evaluation.")
+        print("Please check the evaluation function logic and the parameters in input_gen.py.")
+        return # Exit gracefully
+        
     best = hall_of_fame[0]
     best_short, best_med, best_long = best
     optimization_time = time.time() - overall_start_time
     print(f"\nGA completed in {optimization_time:.2f}s ({optimization_time/60:.2f} min)")
     print(f"Best params: short={best_short}, med={best_med}, long={best_long}, Sharpe={best.fitness.values[0]:.6f}")
     
-    # Save top 20 from hall_of_fame (that satisfy short<med<long and not penalized)
-    print("Saving top results...")  # Debugging print
+    # Save top from hall_of_fame without re-evaluating
+    print("Saving top results...")
     with open(RESULTS_FILE, 'w') as f:
         f.write("short_SMA,med_SMA,long_SMA,trades,sharpe_ratio\n")
         unique_results = []
@@ -377,44 +493,32 @@ def main():
             s, m, l = ind
             if not (s < m < l):
                 continue
-            sharpe = ind.fitness.values[0]
+
+            sharpe, trades = ind.fitness.values
+            # Skip penalized results
             if abs(sharpe + 999999.0) < 0.1:
                 continue
-            ga_strat = AlligatorSMAStrategy(
-                short_sma=s,
-                med_sma=m,
-                long_sma=l,
-                big_point_value=big_point_value,
-                slippage=slippage,
-                capital=TRADING_CAPITAL,
-                atr_period=ATR_PERIOD
-            )
-            temp = data.copy()
-            temp = ga_strat.apply_strategy(temp, strategy_name="Strategy")
-            if original_start_idx is not None:
-                eval_data = temp.iloc[original_start_idx:].copy()
-            else:
-                eval_data = temp.copy()
-            trades = eval_data['Position_Change_Strategy'].sum()
+
             key = (s, m, l)
             if key not in seen:
                 seen.add(key)
                 unique_results.append((s, m, l, trades, sharpe))
         
-        unique_results.sort(key=lambda x: (x[0], x[1], x[2]))
+        # Sort by the primary parameter (short_SMA) then by Sharpe
+        unique_results.sort(key=lambda x: (x[0], x[4]), reverse=False)
         for s, m, l, trades, sharpe in unique_results:
             f.write(f"{s},{m},{l},{int(trades)},{sharpe:.6f}\n")
-    print(f"Saved GA results to {RESULTS_FILE} ({len(unique_results)} entries)")  # Debugging print
+    print(f"Saved GA results to {RESULTS_FILE} ({len(unique_results)} entries)")
     
     # Apply the best to full dataset
-    print("Applying best parameters to full data…")  # Debugging print
+    print("Applying best parameters to full data…")
     strategy.short_sma = best_short
     strategy.med_sma = best_med
     strategy.long_sma = best_long
     apply_start = time.time()
     full = strategy.apply_strategy(data.copy(), strategy_name="Strategy")
     apply_time = time.time() - apply_start
-    print(f"Application done in {apply_time:.2f}s")  # Debugging print
+    print(f"Application done in {apply_time:.2f}s")
     
     if original_start_idx is not None:
         final_eval = full.iloc[original_start_idx:].copy()
@@ -497,44 +601,54 @@ def main():
     
     market_cum = final_eval['Market_PnL_Strategy'].cumsum().iloc[-1]
     
-    print("\n--- PERFORMANCE SUMMARY ---")
+    print("\n--- PERFORMANCE SUMMARY OF GA-OPTIMIZED ALLIGATOR SMA STRATEGY ---")
     print(f"Symbol: {data_obj.symbol}")
-    print(f"Big Point Value: {big_point_value}")
-    print(f"ATR Period: {ATR_PERIOD} days")
-    print(f"Capital: ${TRADING_CAPITAL:,}")
-    print(f"Avg Position Size: {metrics['avg_position_size']:.2f}")
-    print(f"Max Position Size: {metrics['max_position_size']:.0f}")
+    print(f"Description: {data_obj.description}")
+    print(f"Exchange: {data_obj.exchange}")
+    print(f"Interval: {data_obj.interval_type} {data_obj.interval_span}")
+    print(f"Big Point Value (from data): {big_point_value}")
+    print(f"ATR Period for Position Sizing: {ATR_PERIOD} days")
+    print(f"Capital Allocation: ${TRADING_CAPITAL:,}")
+    print(f"Average Position Size: {metrics['avg_position_size']:.2f} contracts")
+    print(f"Maximum Position Size: {metrics['max_position_size']:.0f} contracts")
     print(f"Strategy Total P&L: ${metrics['total_pnl']:,.2f}")
-    print(f"Market B&H P&L: ${market_cum:,.2f}")
+    print(f"Market Buy & Hold P&L: ${market_cum:,.2f}")
     print(f"Outperformance: ${(metrics['total_pnl'] - market_cum):,.2f}")
-    print(f"Sharpe (full): {metrics['sharpe_full']:.6f}")
-    print(f"Sharpe (in‐sample): {metrics['sharpe_in_sample']:.6f}")
-    print(f"Sharpe (out‐of‐sample): {metrics['sharpe_out_sample']:.6f}")
-    print(f"Max Drawdown: ${abs(metrics['max_drawdown_dollars']):,.2f}")
-    print("\n--- TRADE COUNTS ---")
-    print(f"In‐sample trades: {metrics['in_sample_trades']}")
-    print(f"Out‐of‐sample trades: {metrics['out_sample_trades']}")
+    print(f"Sharpe ratio (entire period, annualized): {metrics['sharpe_full']:.6f}")
+    print(f"Sharpe ratio (in-sample, annualized): {metrics['sharpe_in_sample']:.6f}")
+    print(f"Sharpe ratio (out-of-sample, annualized): {metrics['sharpe_out_sample']:.6f}")
+    print(f"Maximum Drawdown: ${abs(metrics['max_drawdown_dollars']):,.2f}")
+    
+    print("\n--- TRADE COUNT SUMMARY ---")
+    print(f"In-sample period trades: {metrics['in_sample_trades']}")
+    print(f"Out-of-sample period trades: {metrics['out_sample_trades']}")
     print(f"Total trades: {metrics['total_trades']}")
-    print(f"In‐sample P&L: ${metrics['in_sample_pnl']:,.2f}")
-    print(f"Out‐of‐sample P&L: ${metrics['out_sample_pnl']:,.2f}")
+    print(f"In-sample P&L: ${metrics['in_sample_pnl']:,.2f}")
+    print(f"Out-of-sample P&L: ${metrics['out_sample_pnl']:,.2f}")
     
-    print(f"\nBest GA params: short={best_short}, med={best_med}, long={best_long}, Sharpe={best.fitness.values[0]:.6f}")
+    print(f"\nBest parameters from GA: Short SMA = {best_short}, Med SMA = {best_med}, Long SMA = {best_long}")
+    print(f"Best Sharpe Ratio: {best.fitness.values[0]:.6f}")
     
-    print("\n--- TIMING SUMMARY ---")
+    print("\n--- EXECUTION TIME SUMMARY (Genetic Algorithm Implementation) ---")
     total_time = time.time() - overall_start_time
-    print(f"Load time: {load_time:.2f}s")
-    print(f"Prep time: {prep_time:.2f}s")
-    print(f"GA optimization time: {optimization_time:.2f}s ({optimization_time/60:.2f}m)")
-    print(f"Strategy apply time: {apply_time:.2f}s")
-    print(f"Visualization time: {viz_time:.2f}s")
-    print(f"Metrics time: {metrics_time:.2f}s")
-    print(f"Total time: {total_time:.2f}s ({total_time/60:.2f}m)")
+    print(f"Data loading time: {load_time:.2f} seconds")
+    print(f"Data preparation time: {prep_time:.2f} seconds")
+    print(f"Genetic Algorithm optimization time: {optimization_time:.2f} seconds ({optimization_time/60:.2f} minutes)")
+    print(f"Strategy application time: {apply_time:.2f} seconds")
+    print(f"Visualization time: {viz_time:.2f} seconds")
+    print(f"Metrics calculation time: {metrics_time:.2f} seconds")
+    print(f"Total execution time: {total_time:.2f} seconds ({total_time/60:.2f} minutes)")
     
-    print("\nEvaluation stats:")
-    print(f"Unique evals: {evaluation_counter}")
-    print(f"Cache hits: {cache_hit_counter}")
-    print(f"Total checks: {evaluation_counter + cache_hit_counter}")
-    print(f"Cache hit rate: {100 * cache_hit_counter/(evaluation_counter + cache_hit_counter):.2f}%")
+    # The old counters are not accurate with multiprocessing.
+    # We can get the number of unique evaluations from the shared cache.
+    num_unique_evals = len(evaluated_combinations_shared)
+    total_eval_attempts = NUM_GENERATIONS * POPULATION_SIZE # This is a rough upper bound
+
+    print(f"\nEvaluation Statistics:")
+    print(f"Unique combinations evaluated and cached: {num_unique_evals}")
+    # It's hard to get an accurate cache hit rate without more complex shared counters.
+    # The total number of evaluation calls is also not simple to track.
+    
     print("\nAnalysis complete!")
 
 if __name__ == "__main__":

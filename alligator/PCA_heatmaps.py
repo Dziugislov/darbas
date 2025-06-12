@@ -1,111 +1,55 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-import os
 
-from input_gen import MIN_TRADES, MAX_TRADES, TICKER
+# 1. Generate synthetic data
+np.random.seed(42)
+n = 200
+data = pd.DataFrame({
+    'vol': np.random.normal(loc=1.0, scale=0.3, size=n),
+    'momentum': np.random.normal(loc=0.5, scale=0.2, size=n),
+    'count': np.random.randint(50, 200, size=n),
+    'shrp': np.random.uniform(0.1, 1.0, size=n)  # Sharpe ratio
+})
 
-SYMBOL = TICKER.replace('=F', '')
+# Filter only strategies with Sharpe ratio > 0.2
+df = data[data['shrp'] > 0.2]
 
-def save_plot(plot_name):
-    output_dir = os.path.join('.', 'output2', SYMBOL)
-    os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(os.path.join(output_dir, plot_name))
-    plt.close()
+# 2. PCA analysis
+features = ['vol', 'momentum', 'count']
+X = df[features].replace([np.inf, -np.inf], np.nan).dropna()
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+pca = PCA(n_components=2)
+X_pca = pca.fit_transform(X_scaled)
+pca_df = pd.DataFrame(X_pca, columns=['PC1', 'PC2'])
 
-def plot_pca_heatmaps(file_path='sma_all_results.txt',
-                      min_trades=MIN_TRADES,
-                      max_trades=MAX_TRADES):
-    """
-    1) Loads columns: short_SMA, med_SMA, long_SMA, sharpe_ratio.
-    2) Filters out bad orderings and trade‐count extremes.
-    3) Standardizes and runs PCA to see which variable contributes least to PC1.
-    4) Drops that variable in each heatmap by averaging sharpe over it.
-    5) Plots three 2D heatmaps:
-       - short vs med (averaging over long)
-       - short vs long (averaging over med)
-       - med vs long (averaging over short)
-       Y‐axis is inverted so that lower SMA values appear at the bottom.
-    """
-    # 1) Load and filter
-    df = pd.read_csv(file_path)
-    df = df[
-        (df['short_SMA'] < df['med_SMA']) &
-        (df['med_SMA'] < df['long_SMA']) &
-        (df['trades'] >= min_trades) &
-        (df['trades'] <= max_trades)
-    ]
+# 3. PCA scatter plot
+plt.figure(figsize=(8, 6))
+sc = plt.scatter(pca_df['PC1'], pca_df['PC2'], c=df['shrp'], cmap='viridis', s=20)
+plt.colorbar(sc, label='Sharpe Ratio')
+plt.title('PCA Projection (2D) with Sharpe as Color')
+plt.xlabel('Principal Component 1')
+plt.ylabel('Principal Component 2')
+plt.grid(True)
+plt.show()
 
-    # 2) Extract the 4‐D array and standardize
-    X = df[['short_SMA', 'med_SMA', 'long_SMA', 'sharpe_ratio']].values
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
-    # 3) PCA to inspect PC1 loadings
-    pca = PCA(n_components=4)
-    pca.fit(X_scaled)
-    loadings = pca.components_[0]
-    var_names = ['short_SMA', 'med_SMA', 'long_SMA', 'sharpe_ratio']
-    idx_drop = np.argmin(np.abs(loadings))
-    var_drop = var_names[idx_drop]
-    print("PCA Loadings (PC1):", dict(zip(var_names, loadings)))
-    print("Dropping variable for slicing:", var_drop)
-
-    # 4) Prepare combinations for heatmaps
-    combos = [
-        ('short_SMA', 'med_SMA', 'long_SMA'),
-        ('short_SMA', 'long_SMA', 'med_SMA'),
-        ('med_SMA', 'long_SMA', 'short_SMA'),
-    ]
-
-    for x_var, y_var, drop_var in combos:
-        # 5a) Group by x_var & y_var, then take mean sharpe (i.e. average over drop_var)
-        pivot_df = (
-            df.groupby([x_var, y_var])['sharpe_ratio']
-              .mean()
-              .reset_index()
-        )
-
-        # 5b) Pivot into a matrix
-        heatmap_data = pivot_df.pivot(index=y_var, columns=x_var, values='sharpe_ratio')
-
-        # 5c) Mask invalid SMA orderings and NaNs
-        mask = np.zeros_like(heatmap_data, dtype=bool)
-        for i, y in enumerate(heatmap_data.index):
-            for j, x in enumerate(heatmap_data.columns):
-                # Enforce the natural ordering: short < med < long
-                valid = False
-                if x_var == 'short_SMA' and y_var == 'med_SMA':
-                    valid = x < y
-                elif x_var == 'short_SMA' and y_var == 'long_SMA':
-                    valid = x < y
-                elif x_var == 'med_SMA' and y_var == 'long_SMA':
-                    valid = x < y
-
-                if not valid or np.isnan(heatmap_data.iloc[i, j]):
-                    mask[i, j] = True
-
-        # 5d) Plot
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(
-            heatmap_data,
-            mask=mask,
-            cmap='coolwarm',
-            cbar_kws={'label': 'Mean Sharpe'}
-        )
-        # Invert Y‐axis so lowest values are at the bottom
-        plt.gca().invert_yaxis()
-
-        plt.title(f'{SYMBOL} Heatmap: {x_var} vs {y_var} (avg over {drop_var})')
-        plt.xlabel(x_var)
-        plt.ylabel(y_var)
-        save_plot(f'{SYMBOL}_{x_var}_{y_var}_heatmap.png')
-
-def main():
-    plot_pca_heatmaps()
-
-if __name__ == '__main__':
-    main()
+# 4. PCA Loadings Plot
+loadings = pd.DataFrame(pca.components_.T, columns=['PC1', 'PC2'], index=features)
+plt.figure(figsize=(8, 8))
+plt.axhline(0, color='grey', lw=1)
+plt.axvline(0, color='grey', lw=1)
+for feature in loadings.index:
+    x = loadings.loc[feature, 'PC1']
+    y = loadings.loc[feature, 'PC2']
+    plt.arrow(0, 0, x, y, head_width=0.05, head_length=0.05, fc='blue', ec='blue')
+    plt.text(x*1.2, y*1.2, feature, color='red', ha='center', va='center')
+plt.xlim(-1, 1)
+plt.ylim(-1, 1)
+plt.xlabel('Principal Component 1')
+plt.ylabel('Principal Component 2')
+plt.title('PCA Loadings Plot (Variable Influence)')
+plt.grid(True)
+plt.show()

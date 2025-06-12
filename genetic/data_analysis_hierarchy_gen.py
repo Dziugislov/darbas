@@ -24,6 +24,7 @@ import matplotlib.colors as mcolors
 import numpy as np
 from matplotlib.lines import Line2D
 import matplotlib
+import openpyxl
 
 from input_gen import MIN_TRADES, MAX_TRADES, MIN_ELEMENTS_PER_CLUSTER, DEFAULT_NUM_CLUSTERS, ELBOW_THRESHOLD
 from input_gen import TICKER, START_DATE, END_DATE, TRAIN_TEST_SPLIT, ATR_PERIOD, TRADING_CAPITAL
@@ -35,10 +36,84 @@ SYMBOL = TICKER.replace('=F', '')  # Define SYMBOL based on TICKER
 
 # Function to save plots in the created folder
 def save_plot(plot_name):
-    output_dir = os.path.join(".", 'output2', TICKER.replace('=F', ''))
+    output_dir = os.path.join(".", 'output1', TICKER.replace('=F', ''))
     os.makedirs(output_dir, exist_ok=True)
     plt.savefig(os.path.join(output_dir, plot_name))
     plt.close()
+
+def save_results_to_excel(ticker_row, sheet, data):
+    """
+    Save hierarchical strategy results to Excel with specific column mappings.
+    
+    Column mappings:
+    C (3) - Hierarchical win rate
+    H-J (8-10) - Top 3 hierarchical medoids
+    AC (29) - Portfolio OOS Sharpe (Hierarchical)
+    """
+    try:
+        # Symbol is already written in column A by the calling function
+        
+        # Column C - Hierarchical win rate
+        if 'hierarchical_win_rate' in data:
+            sheet.cell(row=ticker_row, column=3).value = round(data['hierarchical_win_rate'], 1)
+        
+        # Columns H-J - Top 3 hierarchical medoids
+        if 'hierarchical_medoids' in data:
+            for i, medoid in enumerate(data['hierarchical_medoids']):
+                if i >= 3:  # Only use up to 3 medoids
+                    break
+                column_idx = 8 + i  # H=8, I=9, J=10
+                param_value = f"{int(medoid[0])}/{int(medoid[1])}"
+                sheet.cell(row=ticker_row, column=column_idx).value = param_value
+        
+        # Column AC - Portfolio OOS Sharpe (Hierarchical)
+        if 'portfolio_oos_sharpe_hierarchical' in data:
+            sheet.cell(row=ticker_row, column=29).value = round(data['portfolio_oos_sharpe_hierarchical'], 4)
+            
+    except Exception as e:
+        print(f"Error writing data to Excel: {e}")
+        raise
+
+def update_excel_results(data_dict, results_file='Results.xlsx'):
+    """
+    Update the Excel results file with strategy performance data.
+    Creates the file if it doesn't exist.
+    """
+    try:
+        if not os.path.exists(results_file):
+            print(f"Creating new Excel results file: {results_file}")
+            wb = openpyxl.Workbook()
+        else:
+            print(f"Updating existing Excel file: {results_file}")
+            wb = openpyxl.load_workbook(results_file)
+        
+        sheet = wb.active
+        
+        # Find or create row for this symbol
+        row = 3  # Start from row 3 (assuming rows 1-2 have headers)
+        ticker_row = None
+        
+        while True:
+            cell_value = sheet.cell(row=row, column=1).value
+            if cell_value == SYMBOL:
+                ticker_row = row
+                break
+            elif cell_value is None:
+                ticker_row = row
+                sheet.cell(row=ticker_row, column=1).value = SYMBOL
+                break
+            row += 1
+            
+        # Save the data to appropriate columns
+        save_results_to_excel(ticker_row, sheet, data_dict)
+        
+        # Save the workbook
+        wb.save(results_file)
+        print(f"Excel file updated successfully for {SYMBOL} in row {ticker_row}")
+        
+    except Exception as e:
+        print(f"Error updating Excel file: {e}")
+        raise
 
 def calculate_elbow_curve(X_scaled, max_clusters=20):
     """
@@ -131,7 +206,7 @@ def main():
     SYMBOL = TICKER.replace('=F', '')
 
     # Define the output folder where the plots will be saved
-    output_dir = os.path.join(WORKING_DIR, 'output2', SYMBOL)
+    output_dir = os.path.join(WORKING_DIR, 'output1', SYMBOL)
     os.makedirs(output_dir, exist_ok=True)  # Create the directory if it doesn't exist
 
 
@@ -735,7 +810,7 @@ def main():
             long = params['long_sma']
 
             # Get in-sample data
-            in_sample = data.iloc[:split_index]
+            in_sample = data_for_evaluation.iloc[:split_index]
 
             # Calculate in-sample metrics
             in_sample_daily_pnl = in_sample[f'Daily_PnL_{name}']
@@ -788,7 +863,7 @@ def main():
             long = params['long_sma']
 
             # Get out-of-sample data
-            out_sample = data.iloc[split_index:]
+            out_sample = data_for_evaluation.iloc[split_index:]
 
             # Calculate out-of-sample metrics
             out_sample_daily_pnl = out_sample[f'Daily_PnL_{name}']
@@ -839,12 +914,12 @@ def main():
             long = params['long_sma']
 
             # Calculate full period metrics
-            full_daily_pnl = data[f'Daily_PnL_{name}']
+            full_daily_pnl = data_for_evaluation[f'Daily_PnL_{name}']
             full_cumulative_pnl = full_daily_pnl.sum()
             
             # Calculate average position size for full period
-            avg_pos_size = data[f'Position_Size_{name}'].mean()
-            max_pos_size = data[f'Position_Size_{name}'].max()
+            avg_pos_size = data_for_evaluation[f'Position_Size_{name}'].mean()
+            max_pos_size = data_for_evaluation[f'Position_Size_{name}'].max()
 
             # Calculate Sharpe ratio (annualized)
             if full_daily_pnl.std() > 0:
@@ -853,7 +928,7 @@ def main():
                 full_sharpe = 0
 
             # Count full period trades
-            full_trades = data[f'Position_Change_{name}'].sum()
+            full_trades = data_for_evaluation[f'Position_Change_{name}'].sum()
 
             # Create row text
             row = f"{name:<10} | {short:>4}/{long:<5} | ${full_cumulative_pnl:>10,.2f} | {avg_pos_size:>8.2f} | {full_sharpe:>6.3f} | {full_trades:>6}"
@@ -878,24 +953,24 @@ def main():
             if name == 'Best':
                 print(f"\nAdditional metrics for Best strategy:")
                 print(f"Maximum position size: {max_pos_size:.2f} contracts")
-                print(f"Average ATR value: {data['ATR_Best'].mean():.4f}")
+                print(f"Average ATR value: {data_for_evaluation['ATR_Best'].mean():.4f}")
                 
                 # Calculate drawdown
-                peak = data[f'Cumulative_PnL_{name}'].cummax()
-                drawdown = data[f'Cumulative_PnL_{name}'] - peak
+                peak = data_for_evaluation[f'Cumulative_PnL_{name}'].cummax()
+                drawdown = data_for_evaluation[f'Cumulative_PnL_{name}'] - peak
                 max_drawdown = drawdown.min()
                 
                 print(f"Maximum drawdown: ${max_drawdown:.2f}")
                 
                 # Calculate win rate
-                daily_win_rate = (data[f'Daily_PnL_{name}'] > 0).mean() * 100
+                daily_win_rate = (data_for_evaluation[f'Daily_PnL_{name}'] > 0).mean() * 100
                 print(f"Daily win rate: {daily_win_rate:.2f}%")
 
         print(separator)
 
 
 
-        return data
+        return data_for_evaluation
 
     def bimonthly_out_of_sample_comparison(data, best_short_sma, best_long_sma, top_medoids, min_sharpe=0.2, 
                                     big_point_value=big_point_value, slippage=slippage,
@@ -1112,18 +1187,12 @@ def main():
             
             print(f"{period:<12} | {best_sharpe:12.6f} | {avg_medoid_sharpe:16.6f} | {diff:12.6f} | {portfolio_wins!s:<14}")
         
-        # Calculate win rate using raw values
-        portfolio_wins = sum(bimonthly_sharpe_df['Avg_Medoid_sharpe'] > bimonthly_sharpe_df['Best_sharpe'])
+        # Calculate win rate using rounded values
         total_periods = len(bimonthly_sharpe_df)
-        win_percentage = (portfolio_wins / total_periods) * 100 if total_periods > 0 else 0
-        
-        # Calculate win rate using rounded values (for alternative comparison)
         rounded_wins = sum(bimonthly_sharpe_df['Avg_Medoid_sharpe_rounded'] > bimonthly_sharpe_df['Best_sharpe_rounded'])
         rounded_win_percentage = (rounded_wins / total_periods) * 100 if total_periods > 0 else 0
         
-        print(f"\nBimonthly periods analyzed: {total_periods}")
-        print(f"Medoid Portfolio Wins: {portfolio_wins} of {total_periods} periods ({win_percentage:.2f}%)")
-        print(f"Using rounded values (2 decimal places): {rounded_wins} of {total_periods} periods ({rounded_win_percentage:.2f}%)")
+        print(f"\nBimonthly Win Rate (Portfolio vs Best): {rounded_win_percentage:.2f}% ({rounded_wins}/{total_periods} periods)")
         
         # Create a bar plot to compare bimonthly Sharpe ratios
         plt.figure(figsize=(14, 8))
@@ -1173,6 +1242,16 @@ def main():
         save_plot(f'{SYMBOL}_Hierarchical_Bimonthly_Comparison.png')
         
         
+        # Save results to Excel
+        try:
+            excel_data = {
+                'hierarchical_win_rate': rounded_win_percentage,
+                'hierarchical_medoids': filtered_medoids
+            }
+            update_excel_results(excel_data)
+        except Exception as e:
+            print(f"Warning: Could not update Excel file: {e}")
+
         # Return the bimonthly Sharpe ratio data
         return bimonthly_sharpe_df
 
@@ -1509,6 +1588,16 @@ def main():
         plt.tight_layout()
         save_plot(f'{SYMBOL}_Hierarchical_Full_OOS_Performance_Analysis.png')
         print(f"Full out-of-sample performance analysis plot saved to '{SYMBOL}_Hierarchical_Full_OOS_Performance_Analysis.png'")
+        
+        # Save OOS Sharpe ratios to Excel
+        try:
+            excel_data = {
+                'portfolio_oos_sharpe_hierarchical': port_sharpe_out
+            }
+            update_excel_results(excel_data)
+        except Exception as e:
+            print(f"Warning: Could not update Excel file for OOS performance: {e}")
+
         return data_for_evaluation
 
     # Main execution block

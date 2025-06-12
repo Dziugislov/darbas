@@ -25,10 +25,96 @@ import json
 SYMBOL = TICKER.replace('=F', '')  # Define SYMBOL based on TICKER
 
 def save_plot(plot_name):
-    output_dir = os.path.join(".", 'output2', TICKER.replace('=F', ''))
+    output_dir = os.path.join(".", 'output1', TICKER.replace('=F', ''))
     os.makedirs(output_dir, exist_ok=True)
     plt.savefig(os.path.join(output_dir, plot_name))
     plt.close()
+
+def save_results_to_excel(ticker_row, sheet, data):
+    """
+    Save strategy results to Excel with specific column mappings.
+    
+    Column mappings:
+    A (1) - Symbol
+    B (2) - K-means win rate
+    E-G (5-7) - Top 3 medoid parameters
+    M (13) - Best Sharpe parameters
+    AA (27) - Best OOS Sharpe
+    AB (28) - Portfolio OOS Sharpe
+    """
+    try:
+        # Symbol is already written in column A by the calling function
+        
+        # Column B - K-means win rate
+        if 'win_rate' in data:
+            sheet.cell(row=ticker_row, column=2).value = round(data['win_rate'], 1)
+        
+        # Columns E-G - Top 3 medoid parameters
+        if 'medoids' in data:
+            for i, medoid in enumerate(data['medoids']):
+                if i >= 3:  # Only use up to 3 medoids
+                    break
+                column_idx = 5 + i  # E=5, F=6, G=7
+                param_value = f"{int(medoid[0])}/{int(medoid[1])}"
+                sheet.cell(row=ticker_row, column=column_idx).value = param_value
+        
+        # Column M - Best Sharpe parameters
+        if 'best_params' in data:
+            best_params = f"{data['best_params'][0]}/{data['best_params'][1]}"
+            sheet.cell(row=ticker_row, column=13).value = best_params
+        
+        # Column AA - Best OOS Sharpe
+        if 'best_oos_sharpe' in data:
+            sheet.cell(row=ticker_row, column=27).value = round(data['best_oos_sharpe'], 4)
+        
+        # Column AB - Portfolio OOS Sharpe
+        if 'portfolio_oos_sharpe' in data:
+            sheet.cell(row=ticker_row, column=28).value = round(data['portfolio_oos_sharpe'], 4)
+            
+    except Exception as e:
+        print(f"Error writing data to Excel: {e}")
+        raise
+
+def update_excel_results(data_dict, results_file='Results.xlsx'):
+    """
+    Update the Excel results file with strategy performance data.
+    Creates the file if it doesn't exist.
+    """
+    try:
+        if not os.path.exists(results_file):
+            print(f"Creating new Excel results file: {results_file}")
+            wb = openpyxl.Workbook()
+        else:
+            print(f"Updating existing Excel file: {results_file}")
+            wb = openpyxl.load_workbook(results_file)
+        
+        sheet = wb.active
+        
+        # Find or create row for this symbol
+        row = 3  # Start from row 3 (assuming rows 1-2 have headers)
+        ticker_row = None
+        
+        while True:
+            cell_value = sheet.cell(row=row, column=1).value
+            if cell_value == SYMBOL:
+                ticker_row = row
+                break
+            elif cell_value is None:
+                ticker_row = row
+                sheet.cell(row=ticker_row, column=1).value = SYMBOL
+                break
+            row += 1
+            
+        # Save the data to appropriate columns
+        save_results_to_excel(ticker_row, sheet, data_dict)
+        
+        # Save the workbook
+        wb.save(results_file)
+        print(f"Excel file updated successfully for {SYMBOL} in row {ticker_row}")
+        
+    except Exception as e:
+        print(f"Error updating Excel file: {e}")
+        raise
 
 def calculate_elbow_curve(X_scaled, max_clusters=20):
     """
@@ -111,7 +197,7 @@ def main():
     DATA_DIR = os.path.join(WORKING_DIR, "data")
 
     # Define the output folder where the plots will be saved
-    output_dir = os.path.join(WORKING_DIR, 'output2', SYMBOL)
+    output_dir = os.path.join(WORKING_DIR, 'output1', SYMBOL)
     os.makedirs(output_dir, exist_ok=True)  # Create the directory if it doesn't exist
 
     # Function to save plots in the created folder
@@ -473,7 +559,7 @@ def main():
 
         # Add legend
         plt.legend(handles=[max_sharpe_handle, medoid_handle, top_medoid_handle, centroid_handle],
-                loc='best')
+                loc='lower left')
 
         # Set labels and title
         plt.title(f'{SYMBOL} SMA Parameter Clustering Analysis (Sharpe Ratio)', fontsize=14)
@@ -788,7 +874,7 @@ def main():
             long = params['long_sma']
 
             # Get in-sample data
-            in_sample = data.iloc[:split_index]
+            in_sample = data_for_evaluation.iloc[:split_index]
 
             # Calculate in-sample metrics
             in_sample_daily_pnl = in_sample[f'Daily_PnL_{name}']
@@ -841,7 +927,7 @@ def main():
             long = params['long_sma']
 
             # Get out-of-sample data
-            out_sample = data.iloc[split_index:]
+            out_sample = data_for_evaluation.iloc[split_index:]
 
             # Calculate out-of-sample metrics
             out_sample_daily_pnl = out_sample[f'Daily_PnL_{name}']
@@ -892,12 +978,12 @@ def main():
             long = params['long_sma']
 
             # Calculate full period metrics
-            full_daily_pnl = data[f'Daily_PnL_{name}']
+            full_daily_pnl = data_for_evaluation[f'Daily_PnL_{name}']
             full_cumulative_pnl = full_daily_pnl.sum()
             
             # Calculate average position size for full period
-            avg_pos_size = data[f'Position_Size_{name}'].mean()
-            max_pos_size = data[f'Position_Size_{name}'].max()
+            avg_pos_size = data_for_evaluation[f'Position_Size_{name}'].mean()
+            max_pos_size = data_for_evaluation[f'Position_Size_{name}'].max()
 
             # Calculate Sharpe ratio (annualized)
             if full_daily_pnl.std() > 0:
@@ -906,7 +992,7 @@ def main():
                 full_sharpe = 0
 
             # Count full period trades
-            full_trades = data[f'Position_Change_{name}'].sum()
+            full_trades = data_for_evaluation[f'Position_Change_{name}'].sum()
 
             # Create row text
             row = f"{name:<10} | {short:>4}/{long:<5} | ${full_cumulative_pnl:>10,.2f} | {avg_pos_size:>8.2f} | {full_sharpe:>6.3f} | {full_trades:>6}"
@@ -931,17 +1017,17 @@ def main():
             if name == 'Best':
                 print(f"\nAdditional metrics for Best strategy:")
                 print(f"Maximum position size: {max_pos_size:.2f} contracts")
-                print(f"Average ATR value: {data['ATR_Best'].mean():.4f}")
+                print(f"Average ATR value: {data_for_evaluation['ATR_Best'].mean():.4f}")
                 
                 # Calculate drawdown
-                peak = data[f'Cumulative_PnL_{name}'].cummax()
-                drawdown = data[f'Cumulative_PnL_{name}'] - peak
+                peak = data_for_evaluation[f'Cumulative_PnL_{name}'].cummax()
+                drawdown = data_for_evaluation[f'Cumulative_PnL_{name}'] - peak
                 max_drawdown = drawdown.min()
                 
                 print(f"Maximum drawdown: ${max_drawdown:.2f}")
                 
                 # Calculate win rate using trimmed data
-                daily_win_rate = (data[f'Daily_PnL_{name}'] > 0).mean() * 100
+                daily_win_rate = (data_for_evaluation[f'Daily_PnL_{name}'] > 0).mean() * 100
                 print(f"Daily win rate: {daily_win_rate:.2f}%")
 
         print(separator)
@@ -954,17 +1040,6 @@ def main():
         """
         Compare bimonthly (2-month) performance between the best Sharpe strategy and a portfolio of top medoids
         using ATR-based position sizing.
-        
-        Parameters:
-        data: DataFrame with market data
-        best_short_sma: int - The short SMA period for the best Sharpe strategy
-        best_long_sma: int - The long SMA period for the best Sharpe strategy
-        top_medoids: list - List of top medoids, each as (short_sma, long_sma, sharpe, trades)
-        min_sharpe: float - Minimum Sharpe ratio threshold for medoids to be included
-        big_point_value: float - Big point value for the futures contract
-        dynamic_slippage: float - Slippage value in price units
-        capital: float - Capital allocation for position sizing
-        atr_period: int - Period for ATR calculation
         """
         print(f"\n----- BIMONTHLY OUT-OF-SAMPLE COMPARISON -----")
         print(f"Best Sharpe: ({best_short_sma}/{best_long_sma})")
@@ -975,27 +1050,23 @@ def main():
             print("No medoids provided. Comparison cannot be performed.")
             return None
         
-        # Check if top_medoids is a single tuple (rather than a list of tuples)
-        if isinstance(top_medoids, tuple) and len(top_medoids) >= 3:
-            # Convert single tuple to a list with one tuple
-            medoids_list = [top_medoids]
-        else:
-            # Assume it's already a list
-            medoids_list = top_medoids
+        # Print the top medoids for verification
+        print("\nUSING TOP MEDOIDS (BY SHARPE RATIO):")
+        for i, medoid in enumerate(top_medoids, 1):
+            print(f"Medoid {i}: ({int(medoid[0])}/{int(medoid[1])}) - Sharpe: {float(medoid[2]):.4f}, Trades: {int(medoid[3])}")
         
         # Take at most 3 medoids and filter by minimum Sharpe
         filtered_medoids = []
-        for m in medoids_list[:3]:
-            # Check if we can access the required elements (support numpy arrays, tuples, and lists)
+        for i, m in enumerate(top_medoids[:3]):
             try:
-                # Extract Sharpe ratio and check if it meets the threshold
                 short_sma = m[0]
                 long_sma = m[1]
-                sharpe = float(m[2])  # Convert to float to handle numpy types
+                sharpe = float(m[2])
                 trades = m[3]
                 
                 if sharpe >= min_sharpe:
                     filtered_medoids.append(m)
+                    print(f"Selected medoid {i+1} with Sharpe {sharpe:.4f}")
             except (IndexError, TypeError) as e:
                 print(f"Error processing medoid: {e}")
         
@@ -1005,169 +1076,68 @@ def main():
         
         print(f"Creating portfolio of {len(filtered_medoids)} medoids with Sharpe ratio >= {min_sharpe}:")
         for i, medoid in enumerate(filtered_medoids, 1):
-            print(f"Medoid {i}: ({int(medoid[0])}/{int(medoid[1])}) - Sharpe: {float(medoid[2]):.4f}")
-        
-        # Download historical data if not already provided
-        if data is None:
-            # Load data from local file
-            print(f"Loading {TICKER} data from local files...")
-            data_file = find_futures_file(SYMBOL, DATA_DIR)
-            if not data_file:
-                print(f"Error: No data file found for {TICKER} in {DATA_DIR}")
-                exit(1)
-            
-            print(f"Found data file: {os.path.basename(data_file)}")
-            print(f"File size: {os.path.getsize(data_file)} bytes")
-
-            # Load the data from local file
-            all_data = read_ts.read_ts_ohlcv_dat(data_file)
-            data_obj = all_data[0]
-            ohlc_data = data_obj.data.copy()
-
-            # Convert the OHLCV data to the format expected by the strategy
-            data = ohlc_data.rename(columns={
-                'datetime': 'Date',
-                'open': 'Open',
-                'high': 'High',
-                'low': 'Low',
-                'close': 'Close',
-                'volume': 'Volume'
-            })
-            data.set_index('Date', inplace=True)
-            
-            # Filter data to match the date range if specified in input.py
-            if START_DATE and END_DATE:
-                data = data[(data.index >= pd.to_datetime(START_DATE)) & (data.index <= pd.to_datetime(END_DATE))]
-                print(f"Filtered data to date range: {START_DATE} to {END_DATE}")
-        
-        # Create strategies
-        strategies = {
-            'Best': {'short_sma': best_short_sma, 'long_sma': best_long_sma}
-        }
-        
-        # Add filtered medoids
-        for i, medoid in enumerate(filtered_medoids, 1):
-            strategies[f'Medoid_{i}'] = {'short_sma': int(medoid[0]), 'long_sma': int(medoid[1])}
-        
-        # Apply each strategy to the data
-        for name, params in strategies.items():
-            strategy = SMAStrategy(
-                short_sma=params['short_sma'],
-                long_sma=params['long_sma'],
-                big_point_value=big_point_value,
-                slippage=slippage,
-                capital=capital,
-                atr_period=atr_period
-            )
-            
-            # Apply the strategy
-            data = strategy.apply_strategy(
-                data.copy(),
-                strategy_name=name
-            )
-        
-        # Get the out-of-sample split date
-        split_index = int(len(data) * TRAIN_TEST_SPLIT)
-        split_date = data.index[split_index]
-        print(f"Out-of-sample period starts on: {split_date.strftime('%Y-%m-%d')}")
+            print(f"Final Medoid {i}: ({int(medoid[0])}/{int(medoid[1])}) - Sharpe: {float(medoid[2]):.4f}")
         
         # Get out-of-sample data
+        split_index = int(len(data) * TRAIN_TEST_SPLIT)
         oos_data = data.iloc[split_index:].copy()
         
-        # Add a year and bimonthly period columns for grouping (each year has 6 bimonthly periods)
-        oos_data['year'] = oos_data.index.year.astype(int)
-        oos_data['bimonthly'] = ((oos_data.index.month - 1) // 2 + 1).astype(int)
-        
-        # Create simplified period labels with just the start month (YYYY-MM)
-        oos_data['period_label'] = oos_data.apply(
-            lambda row: f"{int(row['year'])}-{int((row['bimonthly'] - 1) * 2 + 1):02d}",
-            axis=1
-        )
-        
-        # Create a DataFrame to store bimonthly Sharpe ratios
-        bimonthly_sharpe = []
-        
-        # Group by year and bimonthly period, calculate Sharpe ratio for each period
-        for period_label, group in oos_data.groupby('period_label'):
-            # Skip periods with too few trading days
-            if len(group) < 10:
-                continue
-                
-            # Create a bimonthly result entry
-            year, start_month = period_label.split('-')
-            year = int(year)
-            start_month = int(start_month)
+        # Create bimonthly periods
+        oos_data['YearMonth'] = oos_data.index.to_period('2M')
+        bimonthly_periods = oos_data['YearMonth'].unique()
+
+        # Initialize lists to store results
+        period_results = []
+
+        # Calculate Sharpe ratios for each bimonthly period
+        for period in bimonthly_periods:
+            period_data = oos_data[oos_data['YearMonth'] == period]
             
-            bimonthly_result = {
-                'period_label': period_label,
-                'date': pd.Timestamp(year=year, month=start_month, day=15),  # Middle of first month in period
-                'trading_days': len(group),
-            }
-            
-            # Calculate Sharpe ratio for each strategy in this period
-            for name in strategies.keys():
-                # Get returns for this strategy in this period
-                returns = group[f'Daily_PnL_{name}']
-                
-                # Calculate Sharpe ratio (annualized)
-                if len(returns) > 1 and returns.std() > 0:
-                    sharpe = returns.mean() / returns.std() * np.sqrt(252)
-                else:
-                    sharpe = 0
-                    
-                bimonthly_result[f'{name}_sharpe'] = sharpe
-                bimonthly_result[f'{name}_return'] = returns.sum()  # Total P&L for the period
-            
-            # Calculate the normalized average of medoid Sharpe ratios
-            medoid_sharpes = [bimonthly_result[f'Medoid_{i}_sharpe'] for i in range(1, len(filtered_medoids) + 1)]
-            bimonthly_result['Avg_Medoid_sharpe'] = sum(medoid_sharpes) / len(filtered_medoids)
-            
-            # Calculate the normalized average of medoid returns
-            medoid_returns = [bimonthly_result[f'Medoid_{i}_return'] for i in range(1, len(filtered_medoids) + 1)]
-            bimonthly_result['Avg_Medoid_return'] = sum(medoid_returns) / len(filtered_medoids)
-            
-            bimonthly_sharpe.append(bimonthly_result)
-        
-        # Convert to DataFrame
-        bimonthly_sharpe_df = pd.DataFrame(bimonthly_sharpe)
-        
-        # Sort the DataFrame by date for proper chronological display
-        if not bimonthly_sharpe_df.empty:
-            bimonthly_sharpe_df = bimonthly_sharpe_df.sort_values('date')
-        
-        # Add rounded values to dataframe for calculations
-        bimonthly_sharpe_df['Best_sharpe_rounded'] = np.round(bimonthly_sharpe_df['Best_sharpe'], 2)
-        bimonthly_sharpe_df['Avg_Medoid_sharpe_rounded'] = np.round(bimonthly_sharpe_df['Avg_Medoid_sharpe'], 2)
-        
-        # Print detailed comparison of Sharpe ratios
-        print("\nDetailed Sharpe ratio comparison by period:")
-        print(f"{'Period':<12} | {'Best Sharpe':>12} | {'Medoid Portfolio':>16} | {'Difference':>12} | {'Portfolio Wins':<14}")
-        print("-" * 80)
-        
-        for idx, row in bimonthly_sharpe_df.iterrows():
-            period = row['period_label']
-            best_sharpe = row['Best_sharpe']
-            avg_medoid_sharpe = row['Avg_Medoid_sharpe']
-            best_rounded = row['Best_sharpe_rounded']
-            avg_medoid_rounded = row['Avg_Medoid_sharpe_rounded']
-            
-            diff = avg_medoid_sharpe - best_sharpe
-            portfolio_wins = avg_medoid_sharpe > best_sharpe
-            
-            print(f"{period:<12} | {best_sharpe:12.6f} | {avg_medoid_sharpe:16.6f} | {diff:12.6f} | {portfolio_wins!s:<14}")
-        
-        # Calculate win rate using raw values
-        portfolio_wins = sum(bimonthly_sharpe_df['Avg_Medoid_sharpe'] > bimonthly_sharpe_df['Best_sharpe'])
+            # Calculate Best strategy Sharpe
+            best_daily_pnl = period_data['Daily_PnL_Best']
+            best_sharpe = best_daily_pnl.mean() / best_daily_pnl.std() * np.sqrt(252) if best_daily_pnl.std() > 0 else 0
+            best_sharpe_rounded = round(best_sharpe, 4)
+
+            # Calculate average medoid Sharpe
+            medoid_sharpes = []
+            for i, medoid in enumerate(filtered_medoids, 1):
+                medoid_daily_pnl = period_data[f'Daily_PnL_Medoid {i}']
+                if medoid_daily_pnl.std() > 0:
+                    medoid_sharpe = medoid_daily_pnl.mean() / medoid_daily_pnl.std() * np.sqrt(252)
+                    medoid_sharpes.append(medoid_sharpe)
+
+            avg_medoid_sharpe = np.mean(medoid_sharpes) if medoid_sharpes else 0
+            avg_medoid_sharpe_rounded = round(avg_medoid_sharpe, 4)
+
+            # Store results
+            period_results.append({
+                'Period': period,
+                'Best_sharpe': best_sharpe,
+                'Best_sharpe_rounded': best_sharpe_rounded,
+                'Avg_Medoid_sharpe': avg_medoid_sharpe,
+                'Avg_Medoid_sharpe_rounded': avg_medoid_sharpe_rounded
+            })
+
+        # Create DataFrame from results
+        bimonthly_sharpe_df = pd.DataFrame(period_results)
+
+        # Calculate win rate using rounded values
         total_periods = len(bimonthly_sharpe_df)
-        win_percentage = (portfolio_wins / total_periods) * 100 if total_periods > 0 else 0
-        
-        # Calculate win rate using rounded values (for alternative comparison)
         rounded_wins = sum(bimonthly_sharpe_df['Avg_Medoid_sharpe_rounded'] > bimonthly_sharpe_df['Best_sharpe_rounded'])
         rounded_win_percentage = (rounded_wins / total_periods) * 100 if total_periods > 0 else 0
         
-        print(f"\nBimonthly periods analyzed: {total_periods}")
-        print(f"Medoid Portfolio Wins: {portfolio_wins} of {total_periods} periods ({win_percentage:.2f}%)")
-        print(f"Using rounded values (2 decimal places): {rounded_wins} of {total_periods} periods ({rounded_win_percentage:.2f}%)")
+        print(f"\nBimonthly Win Rate (Portfolio vs Best): {rounded_win_percentage:.2f}% ({rounded_wins}/{total_periods} periods)")
+
+        # Update Excel with results
+        try:
+            excel_data = {
+                'win_rate': rounded_win_percentage,
+                'medoids': filtered_medoids,
+                'best_params': (best_short_sma, best_long_sma)
+            }
+            update_excel_results(excel_data)
+        except Exception as e:
+            print(f"Warning: Could not update Excel file: {e}")
         
         # Create a bar plot to compare bimonthly Sharpe ratios
         plt.figure(figsize=(14, 8))
@@ -1188,23 +1158,23 @@ def main():
         # Create medoid description for the title
         medoid_desc = ", ".join([f"({int(m[0])}/{int(m[1])})" for m in filtered_medoids])
         
-        # Customize the plot - using rounded win percentage instead of raw
+        # Customize the plot
         plt.title(f'{SYMBOL} Kmeans Bimonthly Sharpe Ratio Comparison (Out-of-Sample Period)\n' + 
                 f'Medoid Portfolio [{medoid_desc}] outperformed {rounded_win_percentage:.2f}% of the time', 
                 fontsize=14)
         plt.xlabel('Bimonthly Period (Start Month)', fontsize=12)
         plt.ylabel('Sharpe Ratio (Annualized)', fontsize=12)
         
-        # Simplified x-tick labels with just the period start month
-        plt.xticks(x, bimonthly_sharpe_df['period_label'], rotation=45)
+        # Simplified x-tick labels
+        plt.xticks(x, bimonthly_sharpe_df['Period'].astype(str), rotation=45)
         
         plt.grid(axis='y', linestyle='--', alpha=0.7)
         
-        # Create legend with both strategies - moved to bottom to avoid overlap with title
+        # Create legend
         plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2,
                 frameon=True, fancybox=True, framealpha=0.9, fontsize=10)
         
-        # Add a text box with rounded win percentage instead of raw - moved to right side
+        # Add a text box with win rate details
         plt.annotate(f'Medoid Portfolio Win Rate: {rounded_win_percentage:.2f}%\n'
                     f'({rounded_wins} out of {total_periods} periods)\n'
                     f'Portfolio: {len(filtered_medoids)} medoids with Sharpe ≥ {min_sharpe}\n'
@@ -1213,108 +1183,21 @@ def main():
                     bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8),
                     fontsize=12)
         
-        plt.tight_layout(rect=[0, 0, 1, 0.95])  # Add extra space at the bottom for the legend
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
         save_plot(f'{SYMBOL}_KMeans_Bimonthly_Comparison.png')
         
-        
-        # Save win percentage and medoid parameters to Excel file
-        try:
-            import openpyxl
-            
-            # Path to the Excel file
-            excel_file = r"C:\Users\Admin\Documents\darbas\Results.xlsx"
-            
-            # Check if file exists
-            if not os.path.exists(excel_file):
-                print(f"Excel file not found at: {excel_file}")
-                return bimonthly_sharpe_df
-                
-            print(f"Updating Excel file with K-means results for {SYMBOL}...")
-            
-            # Load the workbook
-            wb = openpyxl.load_workbook(excel_file)
-            
-            # Get the active sheet
-            sheet = wb.active
-            
-            # Find the row with the ticker symbol or the first empty row
-            row = 3  # Start from row 3 (assuming rows 1-2 have headers)
-            ticker_row = None
-            
-            while True:
-                cell_value = sheet.cell(row=row, column=1).value
-                if cell_value == SYMBOL:
-                    # Found the ticker symbol
-                    ticker_row = row
-                    break
-                elif cell_value is None:
-                    # Found an empty row
-                    ticker_row = row
-                    # Write the ticker symbol in column A
-                    sheet.cell(row=ticker_row, column=1).value = SYMBOL
-                    break
-                row += 1
-            
-            # Round the win percentage to one decimal place
-            rounded_win_percentage_1dp = round(rounded_win_percentage, 1)
-            
-            # Write the win percentage in column B (K-means)
-            sheet.cell(row=ticker_row, column=2).value = rounded_win_percentage_1dp
-            
-            # Write the medoid parameters in the respective cluster columns
-            # K-means clusters start at column E (5)
-            for i, medoid in enumerate(filtered_medoids):
-                if i >= 3:  # Only use up to 3 clusters
-                    break
-                    
-                # Calculate column index: E=5, F=6, G=7 for Cluster1, Cluster2, Cluster3
-                column_idx = 5 + i
-                
-                # Format as "short/long" (e.g., "5/20")
-                param_value = f"{int(medoid[0])}/{int(medoid[1])}"
-                
-                # Write to Excel
-                sheet.cell(row=ticker_row, column=column_idx).value = param_value
-            
-            # Write the best Sharpe parameters in column M (13)
-            best_sharpe_params = f"{best_short_sma}/{best_long_sma}"
-            sheet.cell(row=ticker_row, column=13).value = best_sharpe_params
-            
-            # Save the workbook
-            wb.save(excel_file)
-            
-            print(f"Excel file updated successfully. Added {SYMBOL} with K-means win rate {rounded_win_percentage_1dp}% in row {ticker_row}")
-            print(f"Added best Sharpe parameters {best_sharpe_params} in column M")
-            
-        except Exception as e:
-            print(f"Error updating Excel file: {e}")
-        
-        # Return the bimonthly Sharpe ratio data
         return bimonthly_sharpe_df
 
     def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_medoids,
                                big_point_value=1, slippage=0, capital=1000000, atr_period=14):
         """
-        Plot a comparison between the best strategy and a portfolio of top 3 medoids.
-        Only shows the P&L comparison plot without the price/SMA indicators.
-        Also writes TRUE/FALSE to Excel column T based on whether the Portfolio
-        outperforms the Best strategy in terms of out-of-sample Sharpe ratio.
-        
-        Parameters:
-        data: DataFrame with market data that already has strategies applied
-        best_short_sma: int - The short SMA period for the best strategy
-        best_long_sma: int - The long SMA period for the best strategy
-        top_medoids: list - List of top medoids by Sharpe ratio
-        big_point_value: float - Big point value for the futures contract
-        slippage: float - Slippage value in price units
-        capital: float - Capital allocation for position sizing
-        atr_period: int - Period for ATR calculation
+        Plot P&L comparison between Best strategy and a portfolio of top 3 medoids,
+        then update Excel. Colors are fixed to blue (Best) and green (Portfolio).
         """
         print(f"\n----- FULL OUT-OF-SAMPLE PERFORMANCE ANALYSIS -----")
-        print(f"Using Best Strategy: Short SMA: {best_short_sma}, Long SMA: {best_long_sma}")
-        print(f"Creating portfolio from top 3 medoids")
+        print(f"Using Best Strategy: ({best_short_sma}/{best_long_sma})")
+        print("Creating portfolio from top 3 medoids")
         
-        # Calculate split index for in-sample/out-of-sample
         split_index = int(len(data) * TRAIN_TEST_SPLIT)
         split_date = data.index[split_index]
         
@@ -1355,7 +1238,6 @@ def main():
             print(f"  - {col}")
         
         for strategy in medoid_strategies:
-            # Try both naming conventions
             daily_pnl_col = f'Daily_PnL_{strategy}'
             
             if daily_pnl_col in data.columns:
@@ -1368,11 +1250,9 @@ def main():
         # If no valid strategies found, we can't create a portfolio
         if valid_strategies == 0:
             print("Error: No valid strategy data found for portfolio. Plotting only Best strategy.")
-            # Set portfolio to same as Best for plotting purposes
             portfolio_daily_pnl = data['Daily_PnL_Best'].copy()
             valid_strategies = 1
         else:
-            # Calculate average (divide by number of valid strategies)
             portfolio_daily_pnl = portfolio_daily_pnl / valid_strategies
         
         # Calculate portfolio cumulative PnL
@@ -1411,10 +1291,7 @@ def main():
             if name == 'Best':
                 params_str = f"({best_short_sma}/{best_long_sma})"
             else:
-                # Create a string with all the medoid parameters
-                medoid_params = []
-                for i, medoid in enumerate(top_medoids[:3], 1):
-                    medoid_params.append(f"{int(medoid[0])}/{int(medoid[1])}")
+                medoid_params = [f"{int(m[0])}/{int(m[1])}" for m in top_medoids[:3]]
                 params_str = f"({', '.join(medoid_params)})"
             
             label = f'{name} {params_str} [IS Sharpe: {in_sample_sharpe:.2f}, OOS Sharpe: {out_sample_sharpe:.2f}]'
@@ -1442,62 +1319,23 @@ def main():
         
         print(f"Full out-of-sample performance analysis plot saved to '{SYMBOL}_KMeans_Full_OOS_Performance_Analysis.png'")
         
-        # Determine if Portfolio outperforms Best in terms of OOS Sharpe
         portfolio_wins = oos_sharpe_ratios['Portfolio'] > oos_sharpe_ratios['Best']
-        print(f"Portfolio out-of-sample Sharpe: {oos_sharpe_ratios['Portfolio']:.4f}")
-        print(f"Best out-of-sample Sharpe: {oos_sharpe_ratios['Best']:.4f}")
+        print(f"Portfolio OOS Sharpe: {oos_sharpe_ratios['Portfolio']:.4f}")
+        print(f"Best OOS Sharpe: {oos_sharpe_ratios['Best']:.4f}")
         print(f"Portfolio outperforms Best in OOS: {portfolio_wins}")
         
-        # Save to Excel
+        # Update Excel with OOS results
         try:
-            import openpyxl
-
-            # Path to the Excel file
-            excel_file = os.path.join(WORKING_DIR, "Results.xlsx")
-
-            # Check if file exists
-            if not os.path.exists(excel_file):
-                print(f"Excel file not found at: {excel_file}")
-                return data
-
-            print(f"Updating Excel file with OOS comparison results for {SYMBOL}...")
-
-            # Load the workbook
-            wb = openpyxl.load_workbook(excel_file)
-
-            # Get the active sheet
-            sheet = wb.active
-
-            # Find the row with the ticker symbol
-            row = 3  # Start from row 3 (assuming rows 1-2 have headers)
-            ticker_row = None
-
-            while True:
-                cell_value = sheet.cell(row=row, column=1).value
-                if cell_value == SYMBOL:
-                    # Found the ticker symbol
-                    ticker_row = row
-                    break
-                elif cell_value is None:
-                    # Found an empty row
-                    ticker_row = row
-                    # Write the ticker symbol in column A
-                    sheet.cell(row=ticker_row, column=1).value = SYMBOL
-                    break
-                row += 1
-
-            # Write TRUE/FALSE in column T (20) based on whether Portfolio outperforms Best
-            sheet.cell(row=ticker_row, column=20).value = "TRUE" if portfolio_wins else "FALSE"
-
-            # Save the workbook
-            wb.save(excel_file)
-
-            print(f"Excel file updated successfully. Added {SYMBOL} with K-means portfolio comparison {portfolio_wins} in column T")
-
+            excel_data = {
+                'best_oos_sharpe': oos_sharpe_ratios['Best'],
+                'portfolio_oos_sharpe': oos_sharpe_ratios['Portfolio']
+            }
+            update_excel_results(excel_data)
         except Exception as e:
-            print(f"Error updating Excel file: {e}")
+            print(f"Warning: Could not update Excel file: {e}")
         
         return data
+
 
     # Main execution block
     # Set matplotlib backend explicitly

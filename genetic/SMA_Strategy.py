@@ -15,7 +15,7 @@ class SMAStrategy:
     - Fully vectorized implementation for efficiency
     """
 
-    def __init__(self, short_sma, long_sma, big_point_value, slippage=0, capital=6000, atr_period=50):
+    def __init__(self, short_sma, long_sma, big_point_value, slippage=0, capital=6000, atr_period=30):
         """
         Initialize the SMA strategy with specific parameters
 
