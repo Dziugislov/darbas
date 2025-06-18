@@ -690,13 +690,17 @@ def plot_strategy_performance(short_sma, long_sma, top_clusters, big_point_value
             for col in pnl_df.columns:
                 if col in existing.columns:
                     logging.info(f"Overwriting existing column '{col}'.")
-                    del existing[col]
                 existing[col] = pnl_df[col]
 
-            pnl_df = existing
+            merged_df = existing
+        else:
+            merged_df = pnl_df
+    else:
+        merged_df = pnl_df
 
     with open("pnl_temp.pkl", "wb") as f:
-        pickle.dump(pnl_df, f)
+        pickle.dump(merged_df, f)
+
 
 
 

@@ -36,6 +36,8 @@ logging.basicConfig(
 evaluated_combinations = {}
 evaluation_counter = 0
 cache_hit_counter = 0
+# Added cache for evaluated DataFrames keyed by (short_sma, long_sma)
+evaluation_data_cache = {}
 
 # -----------------------------------------------------
 # Utility functions
@@ -121,7 +123,7 @@ def find_futures_file(symbol: str, data_dir: str) -> str:
 def evaluate_individual(individual):
     """Evaluate a (short_sma, long_sma) individual and return a Sharpe-ratio
     fitness tuple. Uses several globals that *main()* sets up."""
-    global evaluation_counter, cache_hit_counter, data, big_point_value, slippage, original_start_idx
+    global evaluation_counter, cache_hit_counter, data, big_point_value, slippage, original_start_idx, evaluation_data_cache
 
     short_sma, long_sma = individual
     key = (short_sma, long_sma)
@@ -149,6 +151,7 @@ def evaluate_individual(individual):
 
     temp_data = data.copy()
     temp_data = ga_strategy.apply_strategy(temp_data)
+    
 
     eval_data = (
         temp_data.iloc[original_start_idx:].copy()
@@ -172,6 +175,10 @@ def evaluate_individual(individual):
             result = (-999999.0, 0)
     else:
         result = (-999999.0, 0)
+
+    # Cache the evaluated DataFrame for later aggregation if the result is not penalized
+    if result[0] != -999999.0:
+        evaluation_data_cache[key] = eval_data
 
     evaluated_combinations[key] = result
     return result
@@ -743,6 +750,51 @@ def main():
         f"Saved GA optimization results to {RESULTS_FILE} (sorted by short_SMA, {len(sorted_results)} unique strategies)"
     )
     
+    # ------------------------------------------------------------------
+    # Aggregate PnL series for the top 20% strategies by Sharpe ratio
+    # (mimicking the behavior of SMAStrategy.optimize())
+    # ------------------------------------------------------------------
+    try:
+        # Sort by Sharpe (index 2) in descending order
+        sorted_by_sharpe = sorted(unique_results, key=lambda x: x[2], reverse=True)
+        top_n = max(1, int(len(sorted_by_sharpe) * 0.2))
+        top_strategies = sorted_by_sharpe[:top_n]
+
+        pnl_dict = {}
+        for short_sma, long_sma, sharpe_ratio, _ in top_strategies:
+            key = (short_sma, long_sma)
+            eval_df = evaluation_data_cache.get(key)
+            if eval_df is None:
+                continue  # Skip if we somehow did not cache this combo
+
+            # Extract the daily PnL series and normalise the index to date only
+            pnl_series = eval_df["Daily_PnL_Strategy"].copy()
+            pnl_series.index = pnl_series.index.normalize()
+            col_name = f"SMA_{SYMBOL}_{short_sma}/{long_sma}"
+            pnl_dict[col_name] = pnl_series
+
+        if pnl_dict:
+            top_df = pd.DataFrame(pnl_dict)
+            top_df.index = top_df.index.normalize()
+
+            # Merge with existing file if present
+            if os.path.exists("pnl_temp.pkl"):
+                with open("pnl_temp.pkl", "rb") as f:
+                    existing_df = pickle.load(f)
+                    if isinstance(existing_df, pd.DataFrame):
+                        top_df = existing_df.join(top_df, how="outer")
+
+            with open("pnl_temp.pkl", "wb") as f:
+                pickle.dump(top_df, f)
+
+            logging.info(
+                f"Saved PnL series of top {top_n} strategies (top 20%) to pnl_temp.pkl"
+            )
+        else:
+            logging.info("No PnL data collected for top strategies; skipping pnl_temp.pkl update.")
+    except Exception as e:
+        logging.error(f"Failed to save top strategy PnL series: {e}")
+
     # Apply the best parameters found to the full dataset
     strategy.short_sma = best_short_sma
     strategy.long_sma = best_long_sma
@@ -759,24 +811,6 @@ def main():
     else:
         raise ValueError("original_start_idx is None, cannot proceed with evaluation and visualization.")
 
-        # Save best strategy PnL
-    col_name = f"SMA_{SYMBOL}_best_{best_short_sma}/{best_long_sma}"
-    trimmed = data_for_evaluation.copy()
-    pnl_df = pd.DataFrame({col_name: trimmed["Daily_PnL_Strategy"]})
-
-    pnl_df.index = pnl_df.index.normalize()
-
-    if os.path.exists("pnl_temp.pkl"):
-        with open("pnl_temp.pkl", "rb") as f:
-            existing = pickle.load(f)
-            if isinstance(existing, pd.DataFrame):
-                for col in pnl_df.columns:
-                    # ✅ Always overwrite best Sharpe column
-                    existing[col] = pnl_df[col]
-                pnl_df = existing
-
-    with open("pnl_temp.pkl", "wb") as f:
-        pickle.dump(pnl_df, f)
     
     # Generate and save strategy visualization using the helper
     visualize_results(
