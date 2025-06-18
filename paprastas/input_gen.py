@@ -11,7 +11,7 @@ END_DATE = '2025-01-01'
 # SMA range parameters (for genetic algorithm bounds)
 SMA_MIN = 10
 SMA_MAX = 300
-SMA_STEP = 2  # Kept for compatibility with original code, not used in GA
+SMA_STEP = 10  # Kept for compatibility with original code, not used in GA
 
 # Data splitting ratio (percentage of data used for in-sample testing)
 TRAIN_TEST_SPLIT = 0.7

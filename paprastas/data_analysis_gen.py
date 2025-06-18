@@ -682,18 +682,24 @@ def plot_strategy_performance(short_sma, long_sma, top_clusters, big_point_value
     pnl_df = pd.DataFrame(pnl_dict)
     pnl_df.index = pnl_df.index.normalize()
 
-
-
-    # Merge with existing pnl_temp.pkl if exists
     if os.path.exists("pnl_temp.pkl"):
         with open("pnl_temp.pkl", "rb") as f:
             existing = pickle.load(f)
-        pnl_df = existing.join(pnl_df, how="outer")
+
+        if isinstance(existing, pd.DataFrame):
+            for col in pnl_df.columns:
+                if col in existing.columns:
+                    logging.info(f"Overwriting existing column '{col}'.")
+                    del existing[col]
+                existing[col] = pnl_df[col]
+
+            pnl_df = existing
 
     with open("pnl_temp.pkl", "wb") as f:
         pickle.dump(pnl_df, f)
 
-    logging.info(f" Saved KMeans cluster PnLs to pnl_temp.pkl")
+
+
     
     # Calculate split index for in-sample/out-of-sample
     split_index = int(len(data_for_evaluation) * TRAIN_TEST_SPLIT)

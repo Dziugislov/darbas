@@ -562,7 +562,7 @@ def main():
     start_time = time.time()
 
     # Define SMA range (even values from SMA_MIN to SMA_MAX)
-    sma_range = list(range(SMA_MIN, SMA_MAX + 1, 2))
+    sma_range = list(range(SMA_MIN, SMA_MAX + 1, SMA_STEP))
 
     # Run optimization
     best_sma, best_sharpe, best_trades, all_results = strategy.optimize(
@@ -603,24 +603,26 @@ def main():
     else:
         raise ValueError("original_start_idx is None, cannot proceed with evaluation")
     # Save best strategy PnL
-    col_name = f"SMA_{SYMBOL}_{best_short_sma}/{best_long_sma}"
+    col_name = f"SMA_{SYMBOL}_best_{best_short_sma}/{best_long_sma}"
     trimmed = data_for_evaluation.copy()
     pnl_df = pd.DataFrame({col_name: trimmed["Daily_PnL_Strategy"]})
 
-    pnl_df.index = pnl_df.index.normalize()  # ← this removes the hours
+    pnl_df.index = pnl_df.index.normalize()
+
     if os.path.exists("pnl_temp.pkl"):
         with open("pnl_temp.pkl", "rb") as f:
             existing = pickle.load(f)
             if isinstance(existing, pd.DataFrame):
-                col = pnl_df.columns[0]
-                if col not in existing.columns:
-                    pnl_df = existing.join(pnl_df, how="outer")
-                else:
-                    logging.info(f"Column '{col}' already exists in pnl_temp.pkl, skipping join.")
-                    pnl_df = existing  # just keep the existing data
+                for col in pnl_df.columns:
+                    # ✅ Always overwrite best Sharpe column
+                    existing[col] = pnl_df[col]
+                pnl_df = existing
 
     with open("pnl_temp.pkl", "wb") as f:
         pickle.dump(pnl_df, f)
+
+
+
 
 
 
