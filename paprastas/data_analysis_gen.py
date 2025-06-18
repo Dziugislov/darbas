@@ -669,7 +669,7 @@ def plot_strategy_performance(short_sma, long_sma, top_clusters, big_point_value
     
     pnl_dict = {}
 
-    prefix = f"SMA_{TICKER}_Kmeans" if ANALYSIS_METHOD == "Kmeans" else f"SMA_{TICKER}_Hierarchy"
+    prefix = f"SMA_Kmeans_{TICKER}" if ANALYSIS_METHOD == "Kmeans" else f"SMA_Hierarchy_{TICKER}"
 
     for i, (name, params) in enumerate([(f'cluster {i}', strategies[f'cluster {i}']) for i in range(1,4)]):
         short_sma = int(params['short_sma'])
