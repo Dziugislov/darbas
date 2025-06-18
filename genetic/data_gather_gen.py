@@ -795,6 +795,30 @@ def main():
     except Exception as e:
         logging.error(f"Failed to save top strategy PnL series: {e}")
 
+    try:
+        best_col_name = f"SMA_{SYMBOL}_best_{best_short_sma}/{best_long_sma}"
+        best_series = data_for_evaluation["Daily_PnL_Strategy"].copy()
+        best_series.index = best_series.index.normalize()
+        best_df = pd.DataFrame({best_col_name: best_series})
+
+        if os.path.exists("pnl_temp.pkl"):
+            with open("pnl_temp.pkl", "rb") as f:
+                existing_df = pickle.load(f)
+            if isinstance(existing_df, pd.DataFrame):
+                if best_col_name in existing_df.columns:
+                    logging.info(f"Overwriting existing best strategy: {best_col_name}")
+                    del existing_df[best_col_name]
+                existing_df[best_col_name] = best_df[best_col_name]
+                best_df = existing_df
+
+        with open("pnl_temp.pkl", "wb") as f:
+            pickle.dump(best_df, f)
+
+        logging.info(f"✅ Best strategy saved as '{best_col_name}' to pnl_temp.pkl")
+    except Exception as e:
+        logging.error(f"❌ Failed to save best strategy PnL: {e}")
+
+
     # Apply the best parameters found to the full dataset
     strategy.short_sma = best_short_sma
     strategy.long_sma = best_long_sma
