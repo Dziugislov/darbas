@@ -1,11 +1,13 @@
 import pandas as pd
 import numpy as np
 import time
+import os
+import pickle
 
 class SMAStrategy:
     #Vectorized SMA (Simple Moving Average) trading strategy with ATR-based position sizing
 
-    def __init__(self, short_sma, long_sma, big_point_value, slippage=0, capital=6000, atr_period=30):
+    def __init__(self, short_sma, long_sma, big_point_value, slippage=0, capital=6000, atr_period=50):
         """
         Initialize the SMA strategy with specific parameters
 
@@ -112,137 +114,90 @@ class SMAStrategy:
         
         return sim_data
 
-    def optimize(self, data, sma_range, train_test_split=0.7, results_file=None, warm_up_idx=None):
-        """
-        Find the optimal SMA parameters and record all simulations using vectorized operations
-
-        Parameters:
-        data: DataFrame with market data
-        sma_range: Range of SMA periods to test
-        train_test_split: Portion of data to use for in-sample testing
-        results_file: Path to save simulation results
-        warm_up_idx: Index to trim warm-up period (if provided)
-
-        Returns:
-        best_sma_params: Tuple with (short_sma, long_sma)
-        best_sharpe: Best Sharpe ratio found
-        best_trades: Number of trades with best parameters
-        all_results: List of tuples with all simulation results
-        """
-        # Initialize variables to track the best performance
-        best_sharpe = -np.inf  # Start with negative infinity to ensure any valid Sharpe ratio will be better
-        best_sma = (0, 0)  # Tuple to store the best (short_sma, long_sma) combination
-        best_trades = 0  # Number of trades with the best parameters
-        best_sim_data = None  # Store the simulation data for the best parameters
-
-        # Create a list to store all simulation results
+    def optimize(self, data, sma_range, train_test_split=0.7, results_file=None, warm_up_idx=None, ticker=None):
+        best_sharpe = -np.inf
+        best_sma = (0, 0)
+        best_trades = 0
+        best_sim_data = None
         all_results = []
+        sim_data_cache = {}
 
-        # Create the output file for all simulations and write the header
+        if warm_up_idx is None:
+            raise ValueError("warm_up_idx must be provided to ensure data is trimmed properly.")
+
         if results_file:
             with open(results_file, 'w') as f:
                 f.write("short_SMA,long_SMA,trades,sharpe_ratio\n")
 
-        # Count total combinations to test
         total_combinations = sum(1 for a, b in [(s, l) for s in sma_range for l in sma_range] if a < b)
         completed = 0
+        total_sim_time = 0
 
         print(f"Running {total_combinations} simulations...")
 
-        # Track individual simulation times
-        total_sim_time = 0
-        
-        # Iterate through all possible combinations of short and long SMA periods
         for short_sma in sma_range:
             for long_sma in sma_range:
-                # Skip invalid combinations where short SMA is not actually shorter than long SMA
                 if short_sma >= long_sma:
                     continue
 
-                # Start timing this simulation
                 sim_start_time = time.time()
-                
-                # Save original parameters
+
                 orig_short_sma = self.short_sma
                 orig_long_sma = self.long_sma
 
-                # Set new parameters for this simulation
                 self.short_sma = short_sma
                 self.long_sma = long_sma
 
-                # Apply strategy to the data
-                sim_data = self.apply_strategy(data.copy(), strategy_name="Sim")
+                sim_data = self.apply_strategy(data.copy(), strategy_name=f"Sim_{short_sma}_{long_sma}")
+                sim_data_eval = sim_data.iloc[warm_up_idx:].copy()
+                split_index = int(len(sim_data_eval) * train_test_split)
 
-                # Trim warm-up period if provided
-                if warm_up_idx is not None:
-                    # Create an explicit copy to avoid the SettingWithCopyWarning
-                    sim_data_eval = sim_data.iloc[warm_up_idx:].copy()
-                    # Recalculate the split index based on the trimmed data length
-                    split_index = int(len(sim_data_eval) * train_test_split)
-                else:
-                    # Since we're already working with a copy, no need to make another
-                    sim_data_eval = sim_data
-                    # Calculate split index for in-sample/out-of-sample
-                    split_index = int(len(sim_data_eval) * train_test_split)
-
-                # Count trades by identifying position changes
-                trade_entries = sim_data_eval['Position_Change_Sim']
+                trade_col = sim_data_eval.filter(like="Position_Change").columns[0]
+                trade_entries = sim_data_eval[trade_col]
                 trade_count = trade_entries.sum()
 
-                # Calculate daily returns - using loc to avoid SettingWithCopyWarning
-                sim_data_eval.loc[:, 'Daily_Returns'] = sim_data_eval['Daily_PnL_Sim']
-                
-                # Calculate Sharpe ratio using only in-sample data (on dollar returns)
+                pnl_col = sim_data_eval.filter(like="Daily_PnL").columns[0]
+                sim_data_eval['Daily_Returns'] = sim_data_eval[pnl_col]
                 in_sample_returns = sim_data_eval['Daily_Returns'].iloc[:split_index]
 
-                # Skip if there are no returns or all returns are 0
                 if len(in_sample_returns.dropna()) == 0 or in_sample_returns.std() == 0:
                     sharpe_ratio = 0
                 else:
-                    sharpe_ratio = in_sample_returns.mean() / in_sample_returns.std() * np.sqrt(252)  # Annualized
+                    sharpe_ratio = in_sample_returns.mean() / in_sample_returns.std() * np.sqrt(252)
 
-                # Append the results to our file
                 if results_file:
                     with open(results_file, 'a') as f:
                         f.write(f"{short_sma},{long_sma},{trade_count},{sharpe_ratio:.6f}\n")
 
-                # Store the results
-                result = (short_sma, long_sma, trade_count, sharpe_ratio)
-                all_results.append(result)
+                sim_data_cache[(short_sma, long_sma)] = sim_data
+                all_results.append((short_sma, long_sma, trade_count, sharpe_ratio))
 
-                # Update best parameters if current combination performs better
                 if sharpe_ratio > best_sharpe:
                     best_sharpe = sharpe_ratio
                     best_sma = (short_sma, long_sma)
                     best_trades = trade_count
-                    best_sim_data = sim_data_eval.copy()  # Store for verification
+                    best_sim_data = sim_data_eval.copy()
 
-                # Restore original parameters
                 self.short_sma = orig_short_sma
                 self.long_sma = orig_long_sma
 
-                # End timing for this simulation
                 sim_end_time = time.time()
                 sim_time = sim_end_time - sim_start_time
                 total_sim_time += sim_time
-                
-                # Update progress
+
                 completed += 1
-                if completed % 100 == 0 or completed == total_combinations:
+                if completed % 1500 == 0 or completed == total_combinations:
                     avg_sim_time = total_sim_time / completed
                     est_remaining = avg_sim_time * (total_combinations - completed)
                     print(
                         f"Progress: {completed}/{total_combinations} simulations completed ({(completed / total_combinations * 100):.1f}%)"
                         f" - Avg sim time: {avg_sim_time:.4f}s - Est. remaining: {est_remaining:.1f}s")
 
-        # Verify the calculation (for debugging)
         if best_sim_data is not None:
             print("\n--- OPTIMIZATION SHARPE VERIFICATION ---")
-            
-            # Calculate metrics on the best sim data
             verify_split_idx = int(len(best_sim_data) * train_test_split)
             verify_returns = best_sim_data['Daily_Returns'].iloc[:verify_split_idx]
-            
+
             if verify_returns.std() > 0:
                 verify_sharpe = verify_returns.mean() / verify_returns.std() * np.sqrt(252)
                 print(f"Optimization best Sharpe = {best_sharpe:.6f}")
@@ -252,7 +207,31 @@ class SMAStrategy:
             else:
                 print("Cannot verify Sharpe (std = 0)")
 
-        # Return the optimal SMA parameters, corresponding Sharpe ratio, and all results
+        sorted_results = sorted(all_results, key=lambda x: x[3], reverse=True)
+        top_n = max(1, int(len(sorted_results) * 0.2))
+        top_strategies = sorted_results[:top_n]
+
+        pnl_dict = {}
+        for short_sma, long_sma, _, _ in top_strategies:
+            sim_data = sim_data_cache[(short_sma, long_sma)]
+            pnl_col = sim_data.filter(like="Daily_PnL").columns[0]
+            pnl_series = sim_data.iloc[warm_up_idx:][pnl_col].copy()
+            pnl_series.index = pnl_series.index.normalize()
+            col_name = f"SMA_{ticker}_{short_sma}/{long_sma}"
+            pnl_dict[col_name] = pnl_series
+
+        top20_df = pd.DataFrame(pnl_dict)
+        top20_df.index = top20_df.index.normalize()
+
+        if os.path.exists("pnl_temp.pkl"):
+            with open("pnl_temp.pkl", "rb") as f:
+                existing = pickle.load(f)
+                if isinstance(existing, pd.DataFrame):
+                    top20_df = existing.join(top20_df, how="outer")
+
+        with open("pnl_temp.pkl", "wb") as f:
+            pickle.dump(top20_df, f)
+
         return best_sma, best_sharpe, best_trades, all_results
 
     def calculate_performance_metrics(self, data, strategy_name="Strategy", train_test_split=0.7):

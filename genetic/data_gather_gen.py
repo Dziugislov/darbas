@@ -16,6 +16,7 @@ from input_gen import *
 from SMA_Strategy import SMAStrategy
 import logging
 import sys
+import pickle
 
 import logging
 import sys
@@ -757,6 +758,25 @@ def main():
         logging.info(f"Original data length: {len(data)}, Evaluation data length: {len(data_for_evaluation)}")
     else:
         raise ValueError("original_start_idx is None, cannot proceed with evaluation and visualization.")
+
+        # Save best strategy PnL
+    col_name = f"SMA_{SYMBOL}_best_{best_short_sma}/{best_long_sma}"
+    trimmed = data_for_evaluation.copy()
+    pnl_df = pd.DataFrame({col_name: trimmed["Daily_PnL_Strategy"]})
+
+    pnl_df.index = pnl_df.index.normalize()
+
+    if os.path.exists("pnl_temp.pkl"):
+        with open("pnl_temp.pkl", "rb") as f:
+            existing = pickle.load(f)
+            if isinstance(existing, pd.DataFrame):
+                for col in pnl_df.columns:
+                    # ✅ Always overwrite best Sharpe column
+                    existing[col] = pnl_df[col]
+                pnl_df = existing
+
+    with open("pnl_temp.pkl", "wb") as f:
+        pickle.dump(pnl_df, f)
     
     # Generate and save strategy visualization using the helper
     visualize_results(

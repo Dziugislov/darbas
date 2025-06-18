@@ -1,5 +1,1 @@
-<<<<<<< HEAD
-{"big_point_value": 100.0, "slippage": 55.0, "capital": 6000, "atr_period": 30}
-=======
-{"big_point_value": 100000.0, "slippage": 8.0, "capital": 6000, "atr_period": 30}
->>>>>>> df835a9fc36f876df3ef3c48eb21f855d7675143
+{"big_point_value": 600.0, "slippage": 10.0, "capital": 6000, "atr_period": 30}

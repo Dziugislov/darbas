@@ -33,3 +33,502 @@ First few rows of OHLCV data:
 Starting genetic algorithm optimization...
 [INFO] Population size: 900, Generations: 10
 [INFO] Using genetic algorithm parameters from input.py
+[INFO] 
+Genetic algorithm optimization completed in 41.57 seconds (0.69 minutes)
+[INFO] Best parameters found: Short SMA = 106, Long SMA = 160
+[INFO] Best fitness (Sharpe ratio): 0.627696
+[INFO] 
+--- TOP GENETIC ALGORITHM RESULTS ---
+[INFO] Top 1: Short SMA = 106, Long SMA = 160, Sharpe = 0.627696
+[INFO] Top 2: Short SMA = 98, Long SMA = 174, Sharpe = 0.623336
+[INFO] Top 3: Short SMA = 102, Long SMA = 160, Sharpe = 0.617233
+[INFO] Top 4: Short SMA = 104, Long SMA = 158, Sharpe = 0.613865
+[INFO] Top 5: Short SMA = 106, Long SMA = 156, Sharpe = 0.613627
+[INFO] Hall of Fame size: 2449
+[INFO] Number of elements in all_results: 1799
+[INFO] Hall of Fame filtering: 0 had invalid SMA order, 650 had penalty fitness
+[INFO] Total filtered from Hall of Fame: 650
+[INFO] Hall of Fame -> all_results: 2449 -> 1799
+[INFO] Saved GA optimization results to optimized_strategies.pkl (sorted by short_SMA, 1799 unique strategies)
+[INFO] 
+Applying best strategy parameters...
+[INFO] Strategy application completed.
+[INFO] Trimming warm-up period for final evaluation and visualization...
+[INFO] Original data length: 3109, Evaluation data length: 2842
+[INFO] Visualization completed.
+[INFO] Performance metrics calculation completed.
+[INFO] 
+--- PERFORMANCE SUMMARY OF GA-OPTIMIZED SMA STRATEGY ---
+[INFO] Symbol: @AD
+[INFO] Big Point Value (from data): 100000.0
+[INFO] ATR Period for Position Sizing: 30 days
+[INFO] Capital Allocation: $6,000
+[INFO] Average Position Size: 9.51 contracts
+[INFO] Maximum Position Size: 17 contracts
+[INFO] Strategy Total P&L: $555,481.00
+[INFO] Market Buy & Hold P&L: $-24,520.00
+[INFO] Outperformance: $580,001.00
+[INFO] Sharpe ratio (entire period, annualized): 0.632989
+[INFO] Sharpe ratio (in-sample, annualized): 0.627696
+[INFO] Sharpe ratio (out-of-sample, annualized): 0.644916
+[INFO] Maximum Drawdown: $102,820.00
+[INFO] 
+--- TRADE COUNT SUMMARY ---
+[INFO] In-sample period trades: 14
+[INFO] Out-of-sample period trades: 8
+[INFO] Total trades: 22
+[INFO] In-sample P&L: $318,183.00
+[INFO] Out-of-sample P&L: $140,738.00
+[INFO] 
+Best parameters from GA: Short SMA = 106, Long SMA = 160, Sharpe = 0.627696
+[INFO] 
+Evaluation Statistics:
+[INFO] Unique evaluations: 2449
+[INFO] Cache hits (repeated combinations): 6143
+[INFO] Total checks: 8592
+[INFO] Cache hit rate: 71.50%
+[INFO] 
+Analysis complete!
+[INFO] Big Point Value: 100000.0
+[INFO] Slippage: 8.0
+[INFO] Capital for Position Sizing: 6,000
+[INFO] ATR Period: 30
+[INFO] Starting ATR-based SMA strategy analysis...
+[INFO] Loading simulation results from optimized_strategies.pkl...
+[INFO] Loaded 1799 simulation results
+[INFO] Short SMA range: 10 to 298
+[INFO] Long SMA range: 22 to 300
+[INFO] Sharpe ratio range: -0.5543 to 0.6277
+[INFO] 
+Best parameters:
+[INFO] Short SMA: 106
+[INFO] Long SMA: 160
+[INFO] Sharpe Ratio: 0.627696
+[INFO] Number of Trades: 14
+[INFO] 
+Proceeding with Kmeans cluster analysis...
+[INFO] 
+----- Kmeans ANALYSIS -----
+[INFO] Loading data from optimized_strategies.pkl...
+[INFO] Filtered data to 1799 points with 10-2000 trades
+[INFO] Short SMA range: 10.0 to 298.0
+[INFO] Long SMA range: 22.0 to 300.0
+[INFO] Sharpe ratio range: -0.5543 to 0.6277
+[INFO] Trades range: 10.0 to 186.0
+[INFO] 
+Scaled data information:
+[INFO] Scaled Short SMA range: -1.3657 to 2.5879
+[INFO] Scaled Long SMA range: -2.9553 to 2.0914
+[INFO] Scaled Sharpe ratio range: -2.9730 to 2.0253
+[INFO] 
+Determining optimal number of Kmeans clusters using elbow method...
+[INFO] 
+Calculating Kmeans elbow curve...
+[INFO] Optimal number of Kmeans clusters from elbow method: 17
+[INFO] Using 17 Kmeans clusters based on elbow method (threshold=5)
+[INFO] Performing Kmeans clustering with k=17...
+[INFO] 
+Kmeans Cluster sizes:
+[INFO] Kmeans Cluster 0: 100 elements
+[INFO] Kmeans Cluster 1: 115 elements
+[INFO] Kmeans Cluster 2: 119 elements
+[INFO] Kmeans Cluster 3: 95 elements
+[INFO] Kmeans Cluster 4: 166 elements
+[INFO] Kmeans Cluster 5: 75 elements
+[INFO] Kmeans Cluster 6: 61 elements
+[INFO] Kmeans Cluster 7: 91 elements
+[INFO] Kmeans Cluster 8: 46 elements
+[INFO] Kmeans Cluster 9: 93 elements
+[INFO] Kmeans Cluster 10: 104 elements
+[INFO] Kmeans Cluster 11: 140 elements
+[INFO] Kmeans Cluster 12: 95 elements
+[INFO] Kmeans Cluster 13: 71 elements
+[INFO] Kmeans Cluster 14: 191 elements
+[INFO] Kmeans Cluster 15: 95 elements
+[INFO] Kmeans Cluster 16: 142 elements
+[INFO] Computing Kmeans clusters...
+[INFO] 
+Kmeans Cluster Centroids (in original space):
+[INFO] Centroid 0: Short SMA=86.28, Long SMA=189.42, Sharpe=0.3134
+[INFO] Centroid 1: Short SMA=44.17, Long SMA=160.30, Sharpe=0.1039
+[INFO] Centroid 2: Short SMA=219.46, Long SMA=247.41, Sharpe=-0.0209
+[INFO] Centroid 3: Short SMA=30.80, Long SMA=267.37, Sharpe=0.0808
+[INFO] Centroid 4: Short SMA=139.00, Long SMA=181.28, Sharpe=0.2822
+[INFO] Centroid 5: Short SMA=27.71, Long SMA=60.85, Sharpe=0.1374
+[INFO] Centroid 6: Short SMA=75.64, Long SMA=99.87, Sharpe=-0.3541
+[INFO] Centroid 7: Short SMA=15.45, Long SMA=180.70, Sharpe=0.2902
+[INFO] Centroid 8: Short SMA=189.30, Long SMA=211.74, Sharpe=-0.2002
+[INFO] Centroid 9: Short SMA=43.35, Long SMA=171.46, Sharpe=-0.1017
+[INFO] Centroid 10: Short SMA=104.29, Long SMA=144.44, Sharpe=0.3033
+[INFO] Centroid 11: Short SMA=270.04, Long SMA=285.24, Sharpe=-0.0778
+[INFO] Centroid 12: Short SMA=51.47, Long SMA=224.38, Sharpe=-0.0139
+[INFO] Centroid 13: Short SMA=158.06, Long SMA=201.10, Sharpe=0.0909
+[INFO] Centroid 14: Short SMA=99.29, Long SMA=167.07, Sharpe=0.4995
+[INFO] Centroid 15: Short SMA=76.42, Long SMA=121.83, Sharpe=-0.0840
+[INFO] Centroid 16: Short SMA=136.00, Long SMA=164.21, Sharpe=0.4413
+[INFO] 
+----- Kmeans CLUSTERING RESULTS -----
+[INFO] Max Sharpe point: Short SMA=106, Long SMA=160, Sharpe=0.6277, Trades=14
+[INFO] 
+Top 5 Kmeans clusters (by Sharpe ratio):
+[INFO] Kmeans Top 1: Short SMA=100, Long SMA=166, Sharpe=0.6029, Trades=12
+[INFO] Kmeans Top 2: Short SMA=138, Long SMA=164, Sharpe=0.5070, Trades=16
+[INFO] Kmeans Top 3: Short SMA=102, Long SMA=144, Sharpe=0.3692, Trades=19
+[INFO] Kmeans Top 4: Short SMA=86, Long SMA=188, Sharpe=0.3167, Trades=10
+[INFO] Kmeans Top 5: Short SMA=14, Long SMA=178, Sharpe=0.2858, Trades=18
+[INFO] Creating Kmeans cluster visualization...
+[INFO] Plotting centroids from valid Kmeans clusters...
+[INFO] Filtering centroids to only include valid Kmeans clusters: {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+[INFO]   Rounded: (86, 189)
+[INFO]   Nearest: (86.0, 190.0)
+[INFO]   Rounded: (44, 160)
+[INFO]   Rounded: (219, 247)
+[INFO]   Nearest: (220.0, 248.0)
+[INFO]   Rounded: (31, 267)
+[INFO]   Nearest: (30.0, 268.0)
+[INFO]   Rounded: (139, 181)
+[INFO]   Nearest: (140.0, 182.0)
+[INFO]   Rounded: (28, 61)
+[INFO]   Nearest: (28.0, 60.0)
+[INFO]   Rounded: (76, 100)
+[INFO]   Rounded: (15, 181)
+[INFO]   Nearest: (16.0, 180.0)
+[INFO]   Rounded: (189, 212)
+[INFO]   Nearest: (190.0, 212.0)
+[INFO]   Rounded: (43, 171)
+[INFO]   Nearest: (44.0, 172.0)
+[INFO]   Rounded: (104, 144)
+[INFO]   Rounded: (270, 285)
+[INFO]   Nearest: (270.0, 286.0)
+[INFO]   Rounded: (51, 224)
+[INFO]   Nearest: (52.0, 224.0)
+[INFO]   Rounded: (158, 201)
+[INFO]   Nearest: (158.0, 202.0)
+[INFO]   Rounded: (99, 167)
+[INFO]   Nearest: (100.0, 168.0)
+[INFO]   Rounded: (76, 122)
+[INFO]   Rounded: (136, 164)
+[INFO] Successfully plotted 17 out of 17 centroids
+[INFO] 
+Plotting Kmeans strategy performance...
+[INFO] 
+----- Kmeans PLOTTING STRATEGY PERFORMANCE -----
+[INFO] Using Short SMA: 106, Long SMA: 160
+[INFO] Trading with ATR-based position sizing (Capital: $6,000, ATR Period: 30)
+[INFO] Including top 5 clusters
+[INFO] Loading AD data from local files...
+[INFO] Found data file: A_OHLCV_@AD_minutes_1440_1703-1557.dat
+[INFO] File size: 296208 bytes
+[INFO] Warm-up: loaded 2012-12-17 -> 2025-01-01  (+380 d); analysis starts at idx 267
+[INFO] 
+USING THESE Kmeans clusters (IN ORIGINAL ORDER):
+[INFO] Kmeans cluster 1: SMA(100/166) - Original Sharpe: 0.6029, Trades: 12
+[INFO] Kmeans cluster 2: SMA(138/164) - Original Sharpe: 0.5070, Trades: 16
+[INFO] Kmeans cluster 3: SMA(102/144) - Original Sharpe: 0.3692, Trades: 19
+[INFO] Kmeans cluster 4: SMA(86/188) - Original Sharpe: 0.3167, Trades: 10
+[INFO] Kmeans cluster 5: SMA(14/178) - Original Sharpe: 0.2858, Trades: 18
+[INFO] Trimmed warm-up period. Evaluation data length: 2842
+[INFO] 
+Performing Kmeans bimonthly out-of-sample comparison...
+[INFO] 
+----- BIMONTHLY OUT-OF-SAMPLE COMPARISON -----
+[INFO] Best Sharpe: (106/160)
+[INFO] Using ATR-based position sizing (Capital: $6,000, ATR Period: 30)
+[INFO] Creating portfolio of 3 Kmeans clusters with Sharpe ratio >= 0.2:
+[INFO] cluster 1: (100/166) - Sharpe: 0.6029
+[INFO] cluster 2: (138/164) - Sharpe: 0.5070
+[INFO] cluster 3: (102/144) - Sharpe: 0.3692
+[INFO] Loading AD data from local files...
+[INFO] Found data file: A_OHLCV_@AD_minutes_1440_1703-1557.dat
+[INFO] File size: 296208 bytes
+[INFO] Out-of-sample period starts on: 2021-09-14
+[INFO]    period_label       date  trading_days  Best_sharpe  Avg_cluster_sharpe
+0    2021-09-14 2021-09-14            44     0.551202            0.551202
+1    2021-11-14 2021-11-14            43     0.620829            0.620829
+2    2022-01-14 2022-01-14            41     0.058063            0.058063
+3    2022-03-14 2022-03-14            44     1.979608            1.979608
+4    2022-05-14 2022-05-14            43    -1.220633           -2.292817
+5    2022-07-14 2022-07-14            44     0.448047            0.403557
+6    2022-09-14 2022-09-14            43     0.790083            0.790083
+7    2022-11-14 2022-11-14            43    -1.736792           -1.736792
+8    2023-01-14 2023-01-14            41     2.493082            2.458579
+9    2023-03-14 2023-03-14            44    -0.132668           -0.967044
+10   2023-05-14 2023-05-14            44     0.580825           -2.270132
+11   2023-07-14 2023-07-14            44     4.541233            4.541233
+12   2023-09-14 2023-09-14            43     0.691612            0.691612
+13   2023-11-14 2023-11-14            42    -2.563801           -2.563801
+14   2024-01-14 2024-01-14            43     4.073536            3.035601
+15   2024-03-14 2024-03-14            42    -0.424007           -0.014811
+16   2024-05-14 2024-05-14            44    -1.116674           -2.276461
+17   2024-07-14 2024-07-14            45     3.495207            1.170378
+18   2024-09-14 2024-09-14            43    -2.003748           -2.003748
+19   2024-11-14 2024-11-14            33     3.170976            3.586260
+[INFO] 
+Detailed Sharpe ratio comparison by period:
+[INFO] Period       |  Best Sharpe | {ANALYSIS_METHOD} Portfolio |   Difference | {ANALYSIS_METHOD} Portfolio Wins
+[INFO] --------------------------------------------------------------------------------
+[INFO] 2021-09-14   |          0.6 |              0.6 |          0.0 | Excluded      
+[INFO] 2021-11-14   |          0.6 |              0.6 |          0.0 | Excluded      
+[INFO] 2022-01-14   |          0.1 |              0.1 |          0.0 | Excluded      
+[INFO] 2022-03-14   |          2.0 |              2.0 |          0.0 | Excluded      
+[INFO] 2022-05-14   |         -1.2 |             -2.3 |         -1.1 | False         
+[INFO] 2022-07-14   |          0.4 |              0.4 |          0.0 | Excluded      
+[INFO] 2022-09-14   |          0.8 |              0.8 |          0.0 | Excluded      
+[INFO] 2022-11-14   |         -1.7 |             -1.7 |          0.0 | Excluded      
+[INFO] 2023-01-14   |          2.5 |              2.5 |          0.0 | Excluded      
+[INFO] 2023-03-14   |         -0.1 |             -1.0 |         -0.9 | False         
+[INFO] 2023-05-14   |          0.6 |             -2.3 |         -2.9 | False         
+[INFO] 2023-07-14   |          4.5 |              4.5 |          0.0 | Excluded      
+[INFO] 2023-09-14   |          0.7 |              0.7 |          0.0 | Excluded      
+[INFO] 2023-11-14   |         -2.6 |             -2.6 |          0.0 | Excluded      
+[INFO] 2024-01-14   |          4.1 |              3.0 |         -1.1 | False         
+[INFO] 2024-03-14   |         -0.4 |             -0.0 |          0.4 | True          
+[INFO] 2024-05-14   |         -1.1 |             -2.3 |         -1.2 | False         
+[INFO] 2024-07-14   |          3.5 |              1.2 |         -2.3 | False         
+[INFO] 2024-09-14   |         -2.0 |             -2.0 |          0.0 | Excluded      
+[INFO] 2024-11-14   |          3.2 |              3.6 |          0.4 | True          
+[INFO] 
+Excluded periods (identical Sharpe ratios): 2021-09-14, 2021-11-14, 2022-01-14, 2022-03-14, 2022-07-14, 2022-09-14, 2022-11-14, 2023-01-14, 2023-07-14, 2023-09-14, 2023-11-14, 2024-09-14
+[INFO] 
+Total periods before exclusion: 20
+[INFO] Bimonthly periods analyzed (after excluding ties): 8
+[INFO] Kmeans cluster wins (rounded comparison): 2 of 8 periods (25.00% win rate)
+[INFO] Updating Excel file with Kmeans results for AD...
+[INFO] Excel file updated successfully. Added AD with Kmeans win rate 25.0% in row 3
+[INFO] Added best Sharpe parameters 106/160 in column M
+[INFO] 
+Performing Kmeans full out-of-sample performance analysis...
+[INFO] 
+----- Kmeans FULL OUT-OF-SAMPLE PERFORMANCE ANALYSIS -----
+[INFO] Using Best Strategy: Short SMA: 106, Long SMA: 160
+[INFO] Creating portfolio from top 3 Kmeans clusters with Sharpe >= 0.2
+[INFO] Added cluster 1 to portfolio: SMA(100/166) - Original Sharpe: 0.6029
+[INFO] Added cluster 2 to portfolio: SMA(138/164) - Original Sharpe: 0.5070
+[INFO] Added cluster 3 to portfolio: SMA(102/144) - Original Sharpe: 0.3692
+[INFO] Calculating Kmeans portfolio PnL as average of cluster strategies...
+[INFO] 
+Available columns that might contain Daily PnL data:
+[INFO]   - Daily_PnL_Best
+[INFO]   - Daily_PnL_cluster 1
+[INFO]   - Daily_PnL_cluster 2
+[INFO]   - Daily_PnL_cluster 3
+[INFO]   - Daily_PnL_cluster 4
+[INFO]   - Daily_PnL_cluster 5
+[INFO] Added Kmeans Daily_PnL_cluster 1 to portfolio
+[INFO] Added Kmeans Daily_PnL_cluster 2 to portfolio
+[INFO] Added Kmeans Daily_PnL_cluster 3 to portfolio
+[INFO] Full out-of-sample performance analysis plot saved to 'AD_Kmeans_Full_OOS_Performance_Analysis.png'
+[INFO] Kmeans Portfolio out-of-sample Sharpe: 0.2655
+[INFO] Kmeans Best out-of-sample Sharpe: 0.6449
+[INFO] Kmeans Portfolio outperforms Best in OOS: False
+[INFO] Updating Excel file with Kmeans OOS comparison results for AD...
+[INFO] Excel file updated successfully. Added AD with Kmeans portfolio comparison False in column T
+[INFO] 
+Analysis complete! All plots and result files have been saved to the output directory.
+[INFO] Output directory: .\output2\AD
+[INFO] Big Point Value: 100000.0
+[INFO] Slippage: 8.0
+[INFO] Capital for Position Sizing: 6,000
+[INFO] ATR Period: 30
+[INFO] Starting SMA strategy analysis with hierarchical clustering...
+[INFO] Loading simulation results from optimized_strategies.pkl...
+[INFO] Loaded 1799 simulation results
+[INFO] Short SMA range: 10 to 298
+[INFO] Long SMA range: 22 to 300
+[INFO] Sharpe ratio range: -0.5543 to 0.6277
+[INFO] 
+Best parameters:
+[INFO] Short SMA: 106
+[INFO] Long SMA: 160
+[INFO] Sharpe Ratio: 0.627696
+[INFO] Number of Trades: 14
+[INFO] 
+Proceeding with hierarchical cluster analysis...
+[INFO] 
+----- HIERARCHICAL CLUSTER ANALYSIS -----
+[INFO] Loading data from optimized_strategies.pkl...
+[INFO] Filtered data to 1799 points with 10-2000 trades
+[INFO] Short SMA range: 10.0 to 298.0
+[INFO] Long SMA range: 22.0 to 300.0
+[INFO] Sharpe ratio range: -0.5543 to 0.6277
+[INFO] Trades range: 10.0 to 186.0
+[INFO] 
+Scaled data information:
+[INFO] Scaled Short SMA range: -1.3657 to 2.5879
+[INFO] Scaled Long SMA range: -2.9553 to 2.0914
+[INFO] Scaled Sharpe ratio range: -2.9730 to 2.0253
+[INFO] Scaled Trades range: -0.6748 to 14.8572
+[INFO] 
+Creating dendrogram to visualize hierarchical structure...
+[INFO] Using a random sample of 1000 points for dendrogram creation (out of 1799 total points)
+[INFO] 
+Dendrogram using ward linkage method:
+[INFO] Number of data points: 1000
+[INFO] Cophenetic correlation: 0.6290
+[INFO] 
+Determining optimal number of clusters using elbow method...
+[INFO] 
+Calculating elbow curve...
+[INFO] Optimal number of clusters from elbow method: 15
+[INFO] Using 15 clusters based on elbow method (threshold=5%)
+[INFO] Performing hierarchical clustering with 15 clusters using ward linkage...
+[INFO] 
+Cluster sizes:
+[INFO] Cluster 0: 161 elements
+[INFO] Cluster 1: 206 elements
+[INFO] Cluster 2: 208 elements
+[INFO] Cluster 3: 155 elements
+[INFO] Cluster 4: 362 elements
+[INFO] Cluster 5: 65 elements
+[INFO] Cluster 6: 133 elements
+[INFO] Cluster 7: 59 elements
+[INFO] Cluster 8: 13 elements
+[INFO] Cluster 9: 43 elements
+[INFO] Cluster 10: 34 elements
+[INFO] Cluster 11: 138 elements
+[INFO] Cluster 12: 111 elements
+[INFO] Cluster 13: 1 elements
+[INFO] Cluster 14: 110 elements
+[INFO] Using 13 clusters with at least 20 elements
+[INFO] Computing clusters for each cluster...
+[INFO] Cluster 0 cluster: Short SMA=28, Long SMA=188, Sharpe=0.1167, Trades=14
+[INFO] Cluster 1 cluster: Short SMA=138, Long SMA=190, Sharpe=0.3020, Trades=12
+[INFO] Cluster 2 cluster: Short SMA=42, Long SMA=166, Sharpe=-0.1907, Trades=14
+[INFO] Cluster 3 cluster: Short SMA=34, Long SMA=256, Sharpe=-0.1094, Trades=12
+[INFO] Cluster 4 cluster: Short SMA=102, Long SMA=168, Sharpe=0.4730, Trades=12
+[INFO] Cluster 5 cluster: Short SMA=28, Long SMA=56, Sharpe=0.0188, Trades=44
+[INFO] Cluster 6 cluster: Short SMA=208, Long SMA=236, Sharpe=-0.0220, Trades=13
+[INFO] Cluster 7 cluster: Short SMA=88, Long SMA=100, Sharpe=-0.2965, Trades=35
+[INFO] Cluster 9 cluster: Short SMA=240, Long SMA=244, Sharpe=0.0672, Trades=33
+[INFO] Cluster 10 cluster: Short SMA=150, Long SMA=154, Sharpe=0.4153, Trades=38
+[INFO] Cluster 11 cluster: Short SMA=266, Long SMA=284, Sharpe=-0.0245, Trades=15
+[INFO] Cluster 12 cluster: Short SMA=84, Long SMA=128, Sharpe=0.0477, Trades=19
+[INFO] Cluster 14 cluster: Short SMA=132, Long SMA=154, Sharpe=0.2187, Trades=18
+[INFO] 
+----- HIERARCHICAL CLUSTERING RESULTS -----
+[INFO] Max Sharpe point: Short SMA=106, Long SMA=160, Sharpe=0.6277, Trades=14
+[INFO] 
+Top 5 Medoids (by Sharpe ratio):
+[INFO] Top 1: Short SMA=102, Long SMA=168, Sharpe=0.4730, Trades=12
+[INFO] Top 2: Short SMA=150, Long SMA=154, Sharpe=0.4153, Trades=38
+[INFO] Top 3: Short SMA=138, Long SMA=190, Sharpe=0.3020, Trades=12
+[INFO] Creating hierarchical cluster visualization...
+[INFO] Using 13 valid clusters with clusters
+[INFO] Filtering to 1785 points from valid clusters
+[INFO] 
+Plotting strategy performance...
+[INFO] 
+----- Hierarchical PLOTTING STRATEGY PERFORMANCE -----
+[INFO] Using Short SMA: 106, Long SMA: 160
+[INFO] Trading with ATR-based position sizing (Capital: $6,000, ATR Period: 30)
+[INFO] Including top 5 clusters
+[INFO] Loading AD data from local files...
+[INFO] Found data file: A_OHLCV_@AD_minutes_1440_1703-1557.dat
+[INFO] File size: 296208 bytes
+[INFO] Warm-up: loaded 2012-12-17 -> 2025-01-01  (+380 d); analysis starts at idx 267
+[INFO] 
+USING THESE Hierarchical clusters (IN ORIGINAL ORDER):
+[INFO] Hierarchical cluster 1: SMA(102/168) - Original Sharpe: 0.4730, Trades: 12
+[INFO] Hierarchical cluster 2: SMA(150/154) - Original Sharpe: 0.4153, Trades: 38
+[INFO] Hierarchical cluster 3: SMA(138/190) - Original Sharpe: 0.3020, Trades: 12
+[INFO] Hierarchical cluster 4: SMA(132/154) - Original Sharpe: 0.2187, Trades: 18
+[INFO] Hierarchical cluster 5: SMA(28/188) - Original Sharpe: 0.1167, Trades: 14
+[INFO] Trimmed warm-up period. Evaluation data length: 2842
+[INFO] 
+Performing bimonthly out-of-sample comparison with hierarchical clustering...
+[INFO] 
+----- BIMONTHLY OUT-OF-SAMPLE COMPARISON -----
+[INFO] Best Sharpe: (106/160)
+[INFO] Using ATR-based position sizing (Capital: $6,000, ATR Period: 30)
+[INFO] Creating portfolio of 3 Hierarchical clusters with Sharpe ratio >= 0.2:
+[INFO] cluster 1: (102/168) - Sharpe: 0.4730
+[INFO] cluster 2: (150/154) - Sharpe: 0.4153
+[INFO] cluster 3: (138/190) - Sharpe: 0.3020
+[INFO] Loading AD data from local files...
+[INFO] Found data file: A_OHLCV_@AD_minutes_1440_1703-1557.dat
+[INFO] File size: 296208 bytes
+[INFO] Out-of-sample period starts on: 2021-09-14
+[INFO]    period_label       date  trading_days  Best_sharpe  Avg_cluster_sharpe
+0    2021-09-14 2021-09-14            44     0.551202            0.551202
+1    2021-11-14 2021-11-14            43     0.620829            0.620829
+2    2022-01-14 2022-01-14            41     0.058063            0.058063
+3    2022-03-14 2022-03-14            44     1.979608            1.491246
+4    2022-05-14 2022-05-14            43    -1.220633            0.783922
+5    2022-07-14 2022-07-14            44     0.448047            0.722602
+6    2022-09-14 2022-09-14            43     0.790083            0.790083
+7    2022-11-14 2022-11-14            43    -1.736792           -1.736792
+8    2023-01-14 2023-01-14            41     2.493082            2.493082
+9    2023-03-14 2023-03-14            44    -0.132668           -0.292013
+10   2023-05-14 2023-05-14            44     0.580825            1.148770
+11   2023-07-14 2023-07-14            44     4.541233            2.808763
+12   2023-09-14 2023-09-14            43     0.691612            0.691612
+13   2023-11-14 2023-11-14            42    -2.563801           -3.100356
+14   2024-01-14 2024-01-14            43     4.073536            1.681490
+15   2024-03-14 2024-03-14            42    -0.424007            0.619271
+16   2024-05-14 2024-05-14            44    -1.116674            0.726240
+17   2024-07-14 2024-07-14            45     3.495207           -0.064369
+18   2024-09-14 2024-09-14            43    -2.003748           -2.391713
+19   2024-11-14 2024-11-14            33     3.170976           -0.956787
+[INFO] 
+Detailed Sharpe ratio comparison by period:
+[INFO] Period       |  Best Sharpe | {ANALYSIS_METHOD} Portfolio |   Difference | {ANALYSIS_METHOD} Portfolio Wins
+[INFO] --------------------------------------------------------------------------------
+[INFO] 2021-09-14   |          0.6 |              0.6 |          0.0 | Excluded      
+[INFO] 2021-11-14   |          0.6 |              0.6 |          0.0 | Excluded      
+[INFO] 2022-01-14   |          0.1 |              0.1 |          0.0 | Excluded      
+[INFO] 2022-03-14   |          2.0 |              1.5 |         -0.5 | False         
+[INFO] 2022-05-14   |         -1.2 |              0.8 |          2.0 | True          
+[INFO] 2022-07-14   |          0.4 |              0.7 |          0.3 | True          
+[INFO] 2022-09-14   |          0.8 |              0.8 |          0.0 | Excluded      
+[INFO] 2022-11-14   |         -1.7 |             -1.7 |          0.0 | Excluded      
+[INFO] 2023-01-14   |          2.5 |              2.5 |          0.0 | Excluded      
+[INFO] 2023-03-14   |         -0.1 |             -0.3 |         -0.2 | False         
+[INFO] 2023-05-14   |          0.6 |              1.1 |          0.5 | True          
+[INFO] 2023-07-14   |          4.5 |              2.8 |         -1.7 | False         
+[INFO] 2023-09-14   |          0.7 |              0.7 |          0.0 | Excluded      
+[INFO] 2023-11-14   |         -2.6 |             -3.1 |         -0.5 | False         
+[INFO] 2024-01-14   |          4.1 |              1.7 |         -2.4 | False         
+[INFO] 2024-03-14   |         -0.4 |              0.6 |          1.0 | True          
+[INFO] 2024-05-14   |         -1.1 |              0.7 |          1.8 | True          
+[INFO] 2024-07-14   |          3.5 |             -0.1 |         -3.6 | False         
+[INFO] 2024-09-14   |         -2.0 |             -2.4 |         -0.4 | False         
+[INFO] 2024-11-14   |          3.2 |             -1.0 |         -4.2 | False         
+[INFO] 
+Excluded periods (identical Sharpe ratios): 2021-09-14, 2021-11-14, 2022-01-14, 2022-09-14, 2022-11-14, 2023-01-14, 2023-09-14
+[INFO] 
+Total periods before exclusion: 20
+[INFO] Bimonthly periods analyzed (after excluding ties): 13
+[INFO] Hierarchical cluster wins (rounded comparison): 5 of 13 periods (38.46% win rate)
+[INFO] Updating Excel file with Hierarchical results for AD...
+[INFO] Excel file updated successfully. Added AD with Hierarchical win rate 38.5% in row 3
+[INFO] Added best Sharpe parameters 106/160 in column M
+[INFO] 
+Performing full out-of-sample performance analysis (Hierarchical)...
+[INFO] 
+----- Hierarchical FULL OUT-OF-SAMPLE PERFORMANCE ANALYSIS -----
+[INFO] Using Best Strategy: Short SMA: 106, Long SMA: 160
+[INFO] Creating portfolio from top 3 Hierarchical clusters with Sharpe >= 0.2
+[INFO] Added cluster 1 to portfolio: SMA(102/168) - Original Sharpe: 0.4730
+[INFO] Added cluster 2 to portfolio: SMA(150/154) - Original Sharpe: 0.4153
+[INFO] Added cluster 3 to portfolio: SMA(138/190) - Original Sharpe: 0.3020
+[INFO] Calculating Hierarchical portfolio PnL as average of cluster strategies...
+[INFO] 
+Available columns that might contain Daily PnL data:
+[INFO]   - Daily_PnL_Best
+[INFO]   - Daily_PnL_cluster 1
+[INFO]   - Daily_PnL_cluster 2
+[INFO]   - Daily_PnL_cluster 3
+[INFO]   - Daily_PnL_cluster 4
+[INFO]   - Daily_PnL_cluster 5
+[INFO] Added Hierarchical Daily_PnL_cluster 1 to portfolio
+[INFO] Added Hierarchical Daily_PnL_cluster 2 to portfolio
+[INFO] Added Hierarchical Daily_PnL_cluster 3 to portfolio
+[INFO] Full out-of-sample performance analysis plot saved to 'AD_Hierarchical_Full_OOS_Performance_Analysis.png'
+[INFO] Hierarchical Portfolio out-of-sample Sharpe: 0.3075
+[INFO] Hierarchical Best out-of-sample Sharpe: 0.6449
+[INFO] Hierarchical Portfolio outperforms Best in OOS: False
+[INFO] Updating Excel file with Hierarchical OOS comparison results for AD...
+[INFO] Excel file updated successfully. Added AD with Hierarchical portfolio comparison False in column T
+[INFO] 
+Analysis complete! All plots and result files have been saved to the output directory.
+[INFO] Output directory: .\output2\AD
