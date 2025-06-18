@@ -1,0 +1,49 @@
+[INFO] Loading AD data from local files...
+[INFO] Found data file: A_OHLCV_@AD_minutes_1440_1703-1557.dat
+[INFO] 
+Contents of sessions_slippages.xlsx:
+[INFO]   symbol symbol.1    session  slippage
+0   @MP1      MP1  1710-1550       8.5
+1   @NE1      NE1  1703-1557       9.0
+2   @RTY      RTY  1703-1557      12.0
+3    @SB       SB  0333-1256      14.0
+4    @CT       CT  2102-1417      16.0
+[INFO] Columns: ['symbol', 'symbol.1', 'session', 'slippage']
+[INFO] Found slippage for AD in column D: 8.0
+[INFO] Warm-up: loaded 2012-12-17 -> 2025-01-01  (+380 d); analysis starts at idx 267
+[INFO] Starting brute-force optimization with SMAStrategy.optimize()...
+[INFO] Optimization completed in 74.70s
+[INFO] Best parameters: Short SMA = 106, Long SMA = 160
+[INFO] Best Sharpe ratio: 0.627696, Trades: 22
+[INFO] Saved optimization results to optimized_strategies.pkl
+[INFO] Visualization completed.
+[INFO] 
+--- PERFORMANCE SUMMARY OF GA-OPTIMIZED SMA STRATEGY ---
+[INFO] Symbol: @AD
+[INFO] Big Point Value (from data): 100000.0
+[INFO] ATR Period for Position Sizing: 30 days
+[INFO] Capital Allocation: $6,000
+[INFO] Average Position Size: 9.51 contracts
+[INFO] Maximum Position Size: 17 contracts
+[INFO] Strategy Total P&L: $555,481.00
+[INFO] Market Buy & Hold P&L: $-24,520.00
+[INFO] Outperformance: $580,001.00
+[INFO] Sharpe ratio (entire period, annualized): 0.632989
+[INFO] Sharpe ratio (in-sample, annualized): 0.627696
+[INFO] Sharpe ratio (out-of-sample, annualized): 0.644916
+[INFO] Maximum Drawdown: $102,820.00
+[INFO] 
+--- TRADE COUNT SUMMARY ---
+[INFO] In-sample period trades: 14
+[INFO] Out-of-sample period trades: 8
+[INFO] Total trades: 22
+[INFO] In-sample P&L: $318,183.00
+[INFO] Out-of-sample P&L: $140,738.00
+[INFO] 
+Best parameters from GA: Short SMA = 106, Long SMA = 160, Sharpe = 0.627696
+[INFO] 
+Evaluation Statistics:
+[INFO] Unique evaluations: 10585
+[INFO] Cache hits (repeated combinations): 0
+[INFO] Total checks: 10585
+[INFO] Cache hit rate: 0.00%
