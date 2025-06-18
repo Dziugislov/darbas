@@ -14,6 +14,22 @@ from deap import algorithms
 import read_ts
 from input_gen import *
 from SMA_Strategy import SMAStrategy
+import logging
+import sys
+
+import logging
+import sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(levelname)s] %(message)s",   #no timestamp
+    handlers=[
+        logging.FileHandler("execution.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+
 
 # Global variables for caching and statistics
 evaluated_combinations = {}
@@ -58,15 +74,15 @@ def get_slippage_from_excel(symbol: str, data_dir: str) -> float:
     df = pd.read_excel(excel_path)
 
     # Debug prints
-    print("\nContents of sessions_slippages.xlsx:")
-    print(df.head())
+    logging.info("\nContents of sessions_slippages.xlsx:")
+    logging.info(df.head())
 
     if df.shape[1] < 4:
         raise ValueError(
             f"Excel file has fewer than 4 columns: {df.columns.tolist()}"
         )
 
-    print(f"Columns: {df.columns.tolist()}")
+    logging.info(f"Columns: {df.columns.tolist()}")
 
     df["SymbolUpper"] = df.iloc[:, 1].astype(str).str.upper()
     matching_rows = df[df["SymbolUpper"] == lookup_symbol.upper()]
@@ -81,7 +97,7 @@ def get_slippage_from_excel(symbol: str, data_dir: str) -> float:
             f"Invalid slippage value for symbol '{lookup_symbol}': {slippage_value}"
         )
 
-    print(f"Found slippage for {lookup_symbol} in column D: {slippage_value}")
+    logging.info(f"Found slippage for {lookup_symbol} in column D: {slippage_value}")
     return slippage_value
 
 
@@ -240,9 +256,9 @@ def apply_warmup_and_date_filter(
 
     warm_up_idx = df_with_warmup.index.get_indexer([start_dt], method="nearest")[0]
 
-    # Compact informational print
-    print(
-        f"Warm-up: loaded {adjusted_start.date()} → {end_dt.date()}  "
+    # Compact informational logging.info
+    logging.info(
+        f"Warm-up: loaded {adjusted_start.date()} -> {end_dt.date()}  "
         f"(+{warm_up_days} d); analysis starts at idx {warm_up_idx}"
     )
 
@@ -421,7 +437,7 @@ def visualize_results(
     plt.tight_layout()
     save_plot(f"{file_symbol}_Optimized_Strategy_Plot.png", output_dir)
 
-    print("Visualization completed.")
+    logging.info("Visualization completed.")
 
 # -------------------------------------------------------------------------
 # Printing helper ----------------------------------------------------------
@@ -441,47 +457,47 @@ def print_performance_metrics(
     evaluation_counter: int,
     cache_hit_counter: int,
 ) -> None:
-    """Pretty-print the key performance results and evaluation statistics."""
+    """Pretty-logging.info the key performance results and evaluation statistics."""
 
-    print("\n--- PERFORMANCE SUMMARY OF GA-OPTIMIZED SMA STRATEGY ---")
-    print(f"Symbol: {symbol}")
-    print(f"Big Point Value (from data): {big_point_value}")
-    print(f"ATR Period for Position Sizing: {atr_period} days")
-    print(f"Capital Allocation: ${trading_capital:,}")
+    logging.info("\n--- PERFORMANCE SUMMARY OF GA-OPTIMIZED SMA STRATEGY ---")
+    logging.info(f"Symbol: {symbol}")
+    logging.info(f"Big Point Value (from data): {big_point_value}")
+    logging.info(f"ATR Period for Position Sizing: {atr_period} days")
+    logging.info(f"Capital Allocation: ${trading_capital:,}")
 
     # --- Core metrics
-    print(f"Average Position Size: {metrics['avg_position_size']:.2f} contracts")
-    print(f"Maximum Position Size: {metrics['max_position_size']:.0f} contracts")
-    print(f"Strategy Total P&L: ${metrics['total_pnl']:,.2f}")
-    print(f"Market Buy & Hold P&L: ${market_cumulative_pnl:,.2f}")
-    print(f"Outperformance: ${(metrics['total_pnl'] - market_cumulative_pnl):,.2f}")
-    print(f"Sharpe ratio (entire period, annualized): {metrics['sharpe_full']:.6f}")
-    print(f"Sharpe ratio (in-sample, annualized): {metrics['sharpe_in_sample']:.6f}")
-    print(f"Sharpe ratio (out-of-sample, annualized): {metrics['sharpe_out_sample']:.6f}")
-    print(f"Maximum Drawdown: ${abs(metrics['max_drawdown_dollars']):,.2f}")
+    logging.info(f"Average Position Size: {metrics['avg_position_size']:.2f} contracts")
+    logging.info(f"Maximum Position Size: {metrics['max_position_size']:.0f} contracts")
+    logging.info(f"Strategy Total P&L: ${metrics['total_pnl']:,.2f}")
+    logging.info(f"Market Buy & Hold P&L: ${market_cumulative_pnl:,.2f}")
+    logging.info(f"Outperformance: ${(metrics['total_pnl'] - market_cumulative_pnl):,.2f}")
+    logging.info(f"Sharpe ratio (entire period, annualized): {metrics['sharpe_full']:.6f}")
+    logging.info(f"Sharpe ratio (in-sample, annualized): {metrics['sharpe_in_sample']:.6f}")
+    logging.info(f"Sharpe ratio (out-of-sample, annualized): {metrics['sharpe_out_sample']:.6f}")
+    logging.info(f"Maximum Drawdown: ${abs(metrics['max_drawdown_dollars']):,.2f}")
 
     # --- Trade counts
-    print("\n--- TRADE COUNT SUMMARY ---")
-    print(f"In-sample period trades: {metrics['in_sample_trades']}")
-    print(f"Out-of-sample period trades: {metrics['out_sample_trades']}")
-    print(f"Total trades: {metrics['total_trades']}")
-    print(f"In-sample P&L: ${metrics['in_sample_pnl']:,.2f}")
-    print(f"Out-of-sample P&L: ${metrics['out_sample_pnl']:,.2f}")
+    logging.info("\n--- TRADE COUNT SUMMARY ---")
+    logging.info(f"In-sample period trades: {metrics['in_sample_trades']}")
+    logging.info(f"Out-of-sample period trades: {metrics['out_sample_trades']}")
+    logging.info(f"Total trades: {metrics['total_trades']}")
+    logging.info(f"In-sample P&L: ${metrics['in_sample_pnl']:,.2f}")
+    logging.info(f"Out-of-sample P&L: ${metrics['out_sample_pnl']:,.2f}")
 
     # --- GA best parameters
-    print(
+    logging.info(
         f"\nBest parameters from GA: Short SMA = {best_short_sma}, Long SMA = {best_long_sma}, "
         f"Sharpe = {best_sharpe:.6f}"
     )
 
     # --- Evaluation statistics
-    print("\nEvaluation Statistics:")
-    print(f"Unique evaluations: {evaluation_counter}")
-    print(f"Cache hits (repeated combinations): {cache_hit_counter}")
+    logging.info("\nEvaluation Statistics:")
+    logging.info(f"Unique evaluations: {evaluation_counter}")
+    logging.info(f"Cache hits (repeated combinations): {cache_hit_counter}")
     total_checks = evaluation_counter + cache_hit_counter
-    print(f"Total checks: {total_checks}")
+    logging.info(f"Total checks: {total_checks}")
     if total_checks:
-        print(f"Cache hit rate: {cache_hit_counter/total_checks*100:.2f}%")
+        logging.info(f"Cache hit rate: {cache_hit_counter/total_checks*100:.2f}%")
 
 # -------------------------------------------------------------------------
 # Main execution flow ------------------------------------------------------
@@ -501,9 +517,9 @@ def main():
     # Expose commonly-used variables to the helper functions defined at module scope
     global data, big_point_value, slippage, original_start_idx
 
-    print(f"Loading {TICKER} data from local files...")
+    logging.info(f"Loading {TICKER} data from local files...")
     data_file = find_futures_file(SYMBOL, DATA_DIR)
-    print(f"Found data file: {os.path.basename(data_file)}")
+    logging.info(f"Found data file: {os.path.basename(data_file)}")
 
     # Load the futures data file
     all_data = read_ts.read_ts_ohlcv_dat(data_file)
@@ -517,7 +533,7 @@ def main():
 
     # Fetch slippage value from Excel
     slippage = get_slippage_from_excel(TICKER, DATA_DIR)
-    print(f"Using slippage from Excel column D: {slippage}")
+    logging.info(f"Using slippage from Excel column D: {slippage}")
 
     # Save the parameters to a JSON file
     save_parameters(big_point_value, slippage, TRADING_CAPITAL, ATR_PERIOD)
@@ -525,18 +541,18 @@ def main():
     ohlc_data = data_obj.data.copy()  # Make a copy to avoid modifying original data
     
     # Print information about the data
-    print(f"\nSymbol: {data_obj.symbol}")
-    print(f"Description: {data_obj.description}")
-    print(f"Exchange: {data_obj.exchange}")
-    print(f"Interval: {data_obj.interval_type} {data_obj.interval_span}")
-    print(f"Tick size: {tick_size}")
-    print(f"Big point value: {big_point_value}")
-    print(f"Data shape: {ohlc_data.shape}")
-    print(f"Date range: {ohlc_data['datetime'].min()} to {ohlc_data['datetime'].max()}")
+    logging.info(f"\nSymbol: {data_obj.symbol}")
+    logging.info(f"Description: {data_obj.description}")
+    logging.info(f"Exchange: {data_obj.exchange}")
+    logging.info(f"Interval: {data_obj.interval_type} {data_obj.interval_span}")
+    logging.info(f"Tick size: {tick_size}")
+    logging.info(f"Big point value: {big_point_value}")
+    logging.info(f"Data shape: {ohlc_data.shape}")
+    logging.info(f"Date range: {ohlc_data['datetime'].min()} to {ohlc_data['datetime'].max()}")
     
     # Display the first few rows of data
-    print("\nFirst few rows of OHLCV data:")
-    print(ohlc_data.head())
+    logging.info("\nFirst few rows of OHLCV data:")
+    logging.info(ohlc_data.head())
     
     # Convert the OHLCV data to the format expected by the SMA strategy
     # First, rename columns to match
@@ -575,9 +591,9 @@ def main():
     )
     
     # Set up the genetic algorithm for SMA optimization
-    print("\nStarting genetic algorithm optimization...")
-    print(f"Population size: {POPULATION_SIZE}, Generations: {NUM_GENERATIONS}")
-    print(f"Using genetic algorithm parameters from input.py")
+    logging.info("\nStarting genetic algorithm optimization...")
+    logging.info(f"Population size: {POPULATION_SIZE}, Generations: {NUM_GENERATIONS}")
+    logging.info(f"Using genetic algorithm parameters from input.py")
     optimization_start_time = time.time()
     
     # Fix random seed for reproducibility
@@ -638,15 +654,15 @@ def main():
     # Record optimization time
     optimization_end_time = time.time()
     optimization_time = optimization_end_time - optimization_start_time
-    print(f"\nGenetic algorithm optimization completed in {optimization_time:.2f} seconds ({optimization_time/60:.2f} minutes)")
+    logging.info(f"\nGenetic algorithm optimization completed in {optimization_time:.2f} seconds ({optimization_time/60:.2f} minutes)")
     
-    print(f"Best parameters found: Short SMA = {best_short_sma}, Long SMA = {best_long_sma}")
-    print(f"Best fitness (Sharpe ratio): {best_individual.fitness.values[0]:.6f}")
+    logging.info(f"Best parameters found: Short SMA = {best_short_sma}, Long SMA = {best_long_sma}")
+    logging.info(f"Best fitness (Sharpe ratio): {best_individual.fitness.values[0]:.6f}")
     
-    print("\n--- TOP GENETIC ALGORITHM RESULTS ---")
+    logging.info("\n--- TOP GENETIC ALGORITHM RESULTS ---")
     for idx, individual in enumerate(hall_of_fame):
-        if idx < 5 and individual[0] < individual[1]:  # Only print valid combinations where short < long
-            print(f"Top {idx+1}: Short SMA = {individual[0]}, Long SMA = {individual[1]}, Sharpe = {individual.fitness.values[0]:.6f}")
+        if idx < 5 and individual[0] < individual[1]:  # Only logging.info valid combinations where short < long
+            logging.info(f"Top {idx+1}: Short SMA = {individual[0]}, Long SMA = {individual[1]}, Sharpe = {individual.fitness.values[0]:.6f}")
         if idx >= 20:
             break
     
@@ -659,7 +675,7 @@ def main():
     invalid_sma_order = 0
     penalty_fitness = 0
     
-    print(f"Hall of Fame size: {len(hall_of_fame)}")
+    logging.info(f"Hall of Fame size: {len(hall_of_fame)}")
     
     # Process all hall of fame individuals – trade count already stored in the
     # second fitness dimension, so no need to re-run the strategy.
@@ -684,10 +700,10 @@ def main():
         all_results.append((short_sma, long_sma, sharpe, trade_count))
     
     # Print the number of elements in all_results
-    print(f"Number of elements in all_results: {len(all_results)}")
-    print(f"Hall of Fame filtering: {invalid_sma_order} had invalid SMA order, {penalty_fitness} had penalty fitness")
-    print(f"Total filtered from Hall of Fame: {invalid_sma_order + penalty_fitness}")
-    print(f"Hall of Fame -> all_results: {len(hall_of_fame)} -> {len(all_results)}")
+    logging.info(f"Number of elements in all_results: {len(all_results)}")
+    logging.info(f"Hall of Fame filtering: {invalid_sma_order} had invalid SMA order, {penalty_fitness} had penalty fitness")
+    logging.info(f"Total filtered from Hall of Fame: {invalid_sma_order + penalty_fitness}")
+    logging.info(f"Hall of Fame -> all_results: {len(hall_of_fame)} -> {len(all_results)}")
     
     # Remove duplicates (if any)
     unique_results = []
@@ -722,7 +738,7 @@ def main():
 
     results_df.to_pickle(RESULTS_FILE)
 
-    print(
+    logging.info(
         f"Saved GA optimization results to {RESULTS_FILE} (sorted by short_SMA, {len(sorted_results)} unique strategies)"
     )
     
@@ -730,15 +746,15 @@ def main():
     strategy.short_sma = best_short_sma
     strategy.long_sma = best_long_sma
     
-    print("\nApplying best strategy parameters...")
+    logging.info("\nApplying best strategy parameters...")
     data = strategy.apply_strategy(data.copy())
-    print("Strategy application completed.")
+    logging.info("Strategy application completed.")
     
     # Trim data back to the original date range for evaluation
     if original_start_idx is not None:
-        print("Trimming warm-up period for final evaluation and visualization...")
+        logging.info("Trimming warm-up period for final evaluation and visualization...")
         data_for_evaluation = data.iloc[original_start_idx:].copy()
-        print(f"Original data length: {len(data)}, Evaluation data length: {len(data_for_evaluation)}")
+        logging.info(f"Original data length: {len(data)}, Evaluation data length: {len(data_for_evaluation)}")
     else:
         raise ValueError("original_start_idx is None, cannot proceed with evaluation and visualization.")
     
@@ -760,12 +776,12 @@ def main():
         strategy_name="Strategy",
         train_test_split=TRAIN_TEST_SPLIT
     )
-    print("Performance metrics calculation completed.")
+    logging.info("Performance metrics calculation completed.")
     
     # Calculate market performance for comparison (for reporting only, not plotting)
     market_cumulative_pnl = data_for_evaluation['Market_PnL_Strategy'].cumsum().iloc[-1]
     
-    # Pretty-print performance summary using helper
+    # Pretty-logging.info performance summary using helper
     print_performance_metrics(
         symbol=data_obj.symbol,
         big_point_value=big_point_value,
@@ -780,7 +796,7 @@ def main():
         cache_hit_counter=cache_hit_counter,
     )
     
-    print("\nAnalysis complete!")
+    logging.info("\nAnalysis complete!")
 
 
 if __name__ == "__main__":

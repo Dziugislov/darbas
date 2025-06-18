@@ -17,23 +17,29 @@ import matplotlib
 from input_gen import *
 from data_gather_gen import *
 from SMA_Strategy import SMAStrategy
-
-import glob
 import json
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(levelname)s] %(message)s",   #no timestamp
+    handlers=[
+        logging.FileHandler("execution.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 # ---------------------------------------------------------------------------
 # Global constants
 # ---------------------------------------------------------------------------
-
-# Output directory for plots
 SYMBOL = TICKER
 WORKING_DIR = "."  # Current directory
 DATA_DIR = os.path.join(WORKING_DIR, "data")
 OUTPUT_DIR = os.path.join('.', 'output2', SYMBOL)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 EXCEL_FILE_PATH = os.path.join(os.getcwd(), 'Results.xlsx')
+ANALYSIS_METHOD = "Kmeans"  # Set to "Kmeans" or "Hierarchical" depending on the analysis type
 
-def calculate_elbow_curve(X_scaled, max_clusters=20):
+def calculate_elbow_curve(X_scaled):
     """
     Calculate the elbow curve for KMeans clustering
     
@@ -46,9 +52,9 @@ def calculate_elbow_curve(X_scaled, max_clusters=20):
     k_values: list - K values used
     optimal_k: int - Optimal number of clusters based on elbow method
     """
-    print("\nCalculating elbow curve...")
+    logging.info(f"\nCalculating {ANALYSIS_METHOD} elbow curve...")
     distortions = []
-    k_values = range(1, max_clusters + 1)
+    k_values = range(1, DEFAULT_NUM_CLUSTERS + 1)
     
     for k in k_values:
         if k == 1:
@@ -78,13 +84,13 @@ def calculate_elbow_curve(X_scaled, max_clusters=20):
                 label=f'Optimal k={optimal_k}\n(threshold={ELBOW_THRESHOLD}%)')
     plt.xlabel('Number of Clusters (k)')
     plt.ylabel('Distortion')
-    plt.title(f'{SYMBOL} KMeans Elbow Method for Optimal k')
+    plt.title(f'{SYMBOL} {ANALYSIS_METHOD} Elbow Method for Optimal k')
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
     save_plot(f'{SYMBOL}_KMeans_Elbow_Curve.png', OUTPUT_DIR)
     
-    print(f"Optimal number of clusters from elbow method: {optimal_k}")
+    logging.info(f"Optimal number of {ANALYSIS_METHOD} clusters from elbow method: {optimal_k}")
     return distortions, k_values, optimal_k
 
 def load_parameters():
@@ -96,8 +102,8 @@ def load_parameters():
         atr_period = parameters.get("atr_period", ATR_PERIOD)
         return big_point_value, slippage, capital, atr_period
 
-def compute_medoids(X, labels, valid_clusters, dims_to_use=[0, 1, 2]):
-    """Compute medoids for each cluster (point with minimum distance to all other points in cluster)
+def compute_clusters(X, labels, valid_clusters, dims_to_use=[0, 1, 2]):
+    """Compute clusters for each cluster (point with minimum distance to all other points in cluster)
 
     Parameters
     ----------
@@ -112,14 +118,14 @@ def compute_medoids(X, labels, valid_clusters, dims_to_use=[0, 1, 2]):
     dims_to_use : list[int]
         Indices of the columns to consider when computing pair-wise distances.  Defaults to the first three
         columns – `short_SMA`, `long_SMA`, and `sharpe_ratio` – thereby *ignoring* the `trades` column for
-        distance calculations while still keeping it in the returned medoid rows for later reporting.
+        distance calculations while still keeping it in the returned cluster rows for later reporting.
 
     Returns
     -------
     list[np.ndarray]
-        A list containing the **full-dimensional** medoid rows for each valid cluster.
+        A list containing the **full-dimensional** cluster rows for each valid cluster.
     """
-    medoids = []
+    clusters = []
 
     # Pre-compute a view of the requested sub-space for speed
     X_sub = X[:, dims_to_use]
@@ -148,18 +154,17 @@ def compute_medoids(X, labels, valid_clusters, dims_to_use=[0, 1, 2]):
 
         if best_global_idx is not None:
             # Append the *full* row (incl. trades) so downstream code remains unchanged
-            medoids.append(X[best_global_idx])
+            clusters.append(X[best_global_idx])
 
-    return medoids
+    return clusters
 
-def cluster_analysis(file_path='optimized_strategies.pkl', min_trades=MIN_TRADES, max_trades=MAX_TRADES,
-                min_elements_per_cluster=MIN_ELEMENTS_PER_CLUSTER):
+def cluster_analysis(file_path='optimized_strategies.pkl'):
     """
     Perform clustering analysis on SMA optimization results to find robust parameter regions
     Now clusters based on short_SMA, long_SMA, and sharpe_ratio only (not trades)
     """
-    print(f"\n----- CLUSTER ANALYSIS -----")
-    print(f"Loading data from {file_path}...")
+    logging.info(f"\n----- {ANALYSIS_METHOD} ANALYSIS -----")
+    logging.info(f"Loading data from {file_path}...")
 
     # Load the data
     df = pd.read_pickle(file_path)
@@ -169,16 +174,16 @@ def cluster_analysis(file_path='optimized_strategies.pkl', min_trades=MIN_TRADES
 
     # Filter data by number of trades and ensure short_SMA < long_SMA
     X_filtered_full = X_full[(X_full[:, 0] < X_full[:, 1]) &  # short_SMA < long_SMA
-                (X_full[:, 3] >= min_trades) &  # trades >= min_trades
-                (X_full[:, 3] <= max_trades)]  # trades <= max_trades
+                (X_full[:, 3] >= MIN_TRADES) &  # trades >= min_trades
+                (X_full[:, 3] <= MAX_TRADES)]  # trades <= max_trades
 
     if len(X_filtered_full) == 0:
-        raise ValueError(f"No data points meet the criteria after filtering! Adjust min_trades ({min_trades}) and max_trades ({max_trades}).")
+        raise ValueError(f"No data points meet the criteria after filtering! Adjust min_trades ({MIN_TRADES}) and max_trades ({MAX_TRADES}).")
 
     # Create a version with only the 3 dimensions for clustering
     X_filtered = X_filtered_full[:, 0:3]  # Only short_SMA, long_SMA, and sharpe_ratio
 
-    print(f"Filtered data to {len(X_filtered)} points with {min_trades}-{max_trades} trades")
+    logging.info(f"Filtered data to {len(X_filtered)} points with {MIN_TRADES}-{MAX_TRADES} trades")
 
     # Extract the fields for better scaling visibility
     short_sma_values = X_filtered[:, 0]
@@ -186,10 +191,10 @@ def cluster_analysis(file_path='optimized_strategies.pkl', min_trades=MIN_TRADES
     sharpe_values = X_filtered[:, 2]
     trades_values = X_filtered_full[:, 3]
 
-    print(f"Short SMA range: {short_sma_values.min()} to {short_sma_values.max()}")
-    print(f"Long SMA range: {long_sma_values.min()} to {long_sma_values.max()}")
-    print(f"Sharpe ratio range: {sharpe_values.min():.4f} to {sharpe_values.max():.4f}")
-    print(f"Trades range: {trades_values.min()} to {trades_values.max()}")
+    logging.info(f"Short SMA range: {short_sma_values.min()} to {short_sma_values.max()}")
+    logging.info(f"Long SMA range: {long_sma_values.min()} to {long_sma_values.max()}")
+    logging.info(f"Sharpe ratio range: {sharpe_values.min():.4f} to {sharpe_values.max():.4f}")
+    logging.info(f"Trades range: {trades_values.min()} to {trades_values.max()}")
 
     # Scale the data for clustering - using StandardScaler for each dimension
     # This addresses the issue where SMA values have much larger ranges than Sharpe ratio
@@ -197,22 +202,22 @@ def cluster_analysis(file_path='optimized_strategies.pkl', min_trades=MIN_TRADES
     X_scaled = scaler.fit_transform(X_filtered)  # Only scale the 3 dimensions we use for clustering
 
     # Print scaling info for verification
-    print("\nScaled data information:")
+    logging.info("\nScaled data information:")
     scaled_short = X_scaled[:, 0]
     scaled_long = X_scaled[:, 1]
     scaled_sharpe = X_scaled[:, 2]
 
-    print(f"Scaled Short SMA range: {scaled_short.min():.4f} to {scaled_short.max():.4f}")
-    print(f"Scaled Long SMA range: {scaled_long.min():.4f} to {scaled_long.max():.4f}")
-    print(f"Scaled Sharpe ratio range: {scaled_sharpe.min():.4f} to {scaled_sharpe.max():.4f}")
+    logging.info(f"Scaled Short SMA range: {scaled_short.min():.4f} to {scaled_short.max():.4f}")
+    logging.info(f"Scaled Long SMA range: {scaled_long.min():.4f} to {scaled_long.max():.4f}")
+    logging.info(f"Scaled Sharpe ratio range: {scaled_sharpe.min():.4f} to {scaled_sharpe.max():.4f}")
 
     # Determine number of clusters using elbow method
-    print("\nDetermining optimal number of clusters using elbow method...")
-    _, _, k = calculate_elbow_curve(X_scaled, max_clusters=DEFAULT_NUM_CLUSTERS)
-    print(f"Using {k} clusters based on elbow method (threshold={ELBOW_THRESHOLD})")
+    logging.info(f"\nDetermining optimal number of {ANALYSIS_METHOD} clusters using elbow method...")
+    _, _, k = calculate_elbow_curve(X_scaled)
+    logging.info(f"Using {k} {ANALYSIS_METHOD} clusters based on elbow method (threshold={ELBOW_THRESHOLD})")
 
     # Apply KMeans clustering
-    print(f"Performing KMeans clustering with k={k}...")
+    logging.info(f"Performing {ANALYSIS_METHOD} clustering with k={k}...")
     kmeans = KMeans(n_clusters=k, random_state=RANDOM_SEED, n_init=10)
     kmeans.fit(X_scaled)
 
@@ -223,21 +228,21 @@ def cluster_analysis(file_path='optimized_strategies.pkl', min_trades=MIN_TRADES
     unique_labels, counts = np.unique(labels, return_counts=True)
     cluster_sizes = dict(zip(unique_labels, counts))
 
-    print("\nCluster sizes:")
+    logging.info(f"\n{ANALYSIS_METHOD} Cluster sizes:")
     for cluster_id, size in cluster_sizes.items():
-        print(f"Cluster {cluster_id}: {size} elements")
+        logging.info(f"{ANALYSIS_METHOD} Cluster {cluster_id}: {size} elements")
 
     # Filter clusters with enough elements
-    valid_clusters = {i for i, count in cluster_sizes.items() if count >= min_elements_per_cluster}
+    valid_clusters = {i for i, count in cluster_sizes.items() if count >= MIN_ELEMENTS_PER_CLUSTER}
     filtered_indices = np.array([i in valid_clusters for i in labels])
 
     # Filter data to only include points in valid clusters
     X_valid = X_filtered_full[filtered_indices]  # Use full data to get trades too
     labels_valid = labels[filtered_indices]
 
-    # Compute medoids using the existing method that expects 4D data
-    print("Computing medoids...")
-    medoids = compute_medoids(X_valid, labels_valid, valid_clusters)
+    # Compute clusters using the existing method that expects 4D data
+    logging.info(f"Computing {ANALYSIS_METHOD} clusters...")
+    clusters = compute_clusters(X_valid, labels_valid, valid_clusters)
 
     # Compute centroids (only for the 3 dimensions we clustered on)
     centroids_scaled = kmeans.cluster_centers_
@@ -246,51 +251,51 @@ def cluster_analysis(file_path='optimized_strategies.pkl', min_trades=MIN_TRADES
     centroids[:, 0:3] = scaler.inverse_transform(centroids_scaled)
 
     # Print raw centroids for debugging
-    print("\nCluster Centroids (in original space):")
+    logging.info(f"\n{ANALYSIS_METHOD} Cluster Centroids (in original space):")
     for i, centroid in enumerate(centroids):
         if i in valid_clusters:  # Only show valid clusters
-            print(f"Centroid {i}: Short SMA={centroid[0]:.2f}, Long SMA={centroid[1]:.2f}, "
+            logging.info(f"Centroid {i}: Short SMA={centroid[0]:.2f}, Long SMA={centroid[1]:.2f}, "
                 f"Sharpe={centroid[2]:.4f}")
 
-    # Sort medoids by Sharpe ratio
-    medoids_sorted = sorted(medoids, key=lambda x: x[2], reverse=True)
-    top_medoids = medoids_sorted[:5]  # Get top 5 medoids by Sharpe ratio
+    # Sort clusters by Sharpe ratio
+    clusters_sorted = sorted(clusters, key=lambda x: x[2], reverse=True)
+    top_clusters = clusters_sorted[:5]  # Get top 5 clusters by Sharpe ratio
 
     # Find max Sharpe ratio point overall
     max_sharpe_idx = np.argmax(df['sharpe_ratio'].values)
     max_sharpe_point = df.iloc[max_sharpe_idx][['short_SMA', 'long_SMA', 'sharpe_ratio', 'trades']].values
 
     # Print results
-    print("\n----- CLUSTERING RESULTS -----")
-    print(f"Max Sharpe point: Short SMA={int(max_sharpe_point[0])}, Long SMA={int(max_sharpe_point[1])}, "
+    logging.info(f"\n----- {ANALYSIS_METHOD} CLUSTERING RESULTS -----")
+    logging.info(f"Max Sharpe point: Short SMA={int(max_sharpe_point[0])}, Long SMA={int(max_sharpe_point[1])}, "
         f"Sharpe={max_sharpe_point[2]:.4f}, Trades={int(max_sharpe_point[3])}")
 
-    print("\nTop 5 Medoids (by Sharpe ratio):")
-    for idx, medoid in enumerate(top_medoids, 1):
-        print(f"Top {idx}: Short SMA={int(medoid[0])}, Long SMA={int(medoid[1])}, "
-            f"Sharpe={medoid[2]:.4f}, Trades={int(medoid[3])}")
+    logging.info(f"\nTop 5 {ANALYSIS_METHOD} clusters (by Sharpe ratio):")
+    for idx, cluster in enumerate(top_clusters, 1):
+        logging.info(f"{ANALYSIS_METHOD} Top {idx}: Short SMA={int(cluster[0])}, Long SMA={int(cluster[1])}, "
+            f"Sharpe={cluster[2]:.4f}, Trades={int(cluster[3])}")
 
     # Create visualization with clustering results - pass the original labels and valid_clusters
-    create_cluster_visualization(X_filtered_full, medoids, top_medoids, centroids, max_sharpe_point, 
+    create_cluster_visualization(X_filtered_full, clusters, top_clusters, centroids, max_sharpe_point, 
                             labels=labels, valid_clusters=valid_clusters)
 
-    return X_filtered_full, medoids, top_medoids, centroids, max_sharpe_point
+    return X_filtered_full, clusters, top_clusters, centroids, max_sharpe_point
 
-def create_cluster_visualization(X_filtered_full, medoids, top_medoids, centroids, max_sharpe_point, labels=None, valid_clusters=None):
+def create_cluster_visualization(X_filtered_full, clusters, top_clusters, centroids, max_sharpe_point, labels=None, valid_clusters=None):
     """
     Create a continuous heatmap visualization with cluster centers overlaid.
     Only plots data points and clusters that meet the filtering criteria.
     
     Parameters:
     X_filtered_full: array - Filter-compliant data points with shape (n_samples, 4) containing short_SMA, long_SMA, sharpe_ratio, trades
-    medoids: list - List of medoids from valid clusters
-    top_medoids: list - List of top medoids by Sharpe ratio
+    clusters: list - List of clusters from valid clusters
+    top_clusters: list - List of top clusters by Sharpe ratio
     centroids: array - Centroids of clusters
     max_sharpe_point: array - Point with maximum Sharpe ratio
     labels: array - Cluster labels for each point in X_filtered_full (optional)
     valid_clusters: set - Set of valid cluster IDs that meet the min_elements_per_cluster requirement (optional)
     """
-    print("Creating cluster visualization...")
+    logging.info(f"Creating {ANALYSIS_METHOD} cluster visualization...")
 
     # Load the full dataset, but we'll only use it for creating the heatmap grid
     data = pd.read_pickle('optimized_strategies.pkl')
@@ -340,30 +345,30 @@ def create_cluster_visualization(X_filtered_full, medoids, top_medoids, centroid
         plt.scatter(best_x_pos, best_y_pos, marker='*', color='lime', s=200,
                     edgecolor='black', zorder=5)
     except IndexError:
-        print(f"Warning: Max Sharpe point at ({max_sharpe_point[0]}, {max_sharpe_point[1]}) not found in heatmap coordinates")
+        logging.info(f"Warning: Max Sharpe point at ({max_sharpe_point[0]}, {max_sharpe_point[1]}) not found in heatmap coordinates")
 
-    # Only plot medoids from valid clusters
-    if medoids:
-        for medoid in medoids:
+    # Only plot clusters from valid clusters
+    if clusters:
+        for cluster in clusters:
             try:
-                x_pos = np.where(heatmap_data.columns == medoid[0])[0][0] + 0.5
-                y_pos = np.where(heatmap_data.index == medoid[1])[0][0] + 0.5
+                x_pos = np.where(heatmap_data.columns == cluster[0])[0][0] + 0.5
+                y_pos = np.where(heatmap_data.index == cluster[1])[0][0] + 0.5
                 plt.scatter(x_pos, y_pos, marker='s', color='black', s=75, zorder=4)
             except IndexError:
-                print(f"Warning: Medoid at ({medoid[0]}, {medoid[1]}) not found in heatmap coordinates")
+                logging.info(f"Warning: {ANALYSIS_METHOD} cluster at ({cluster[0]}, {cluster[1]}) not found in heatmap coordinates")
 
-    # Plot top 5 medoids (Purple Diamonds)
-    if top_medoids:
-        for medoid in top_medoids:
+    # Plot top 5 clusters (Purple Diamonds)
+    if top_clusters:
+        for cluster in top_clusters:
             try:
-                x_pos = np.where(heatmap_data.columns == medoid[0])[0][0] + 0.5
-                y_pos = np.where(heatmap_data.index == medoid[1])[0][0] + 0.5
+                x_pos = np.where(heatmap_data.columns == cluster[0])[0][0] + 0.5
+                y_pos = np.where(heatmap_data.index == cluster[1])[0][0] + 0.5
                 plt.scatter(x_pos, y_pos, marker='D', color='purple', s=100, zorder=5)
             except IndexError:
-                print(f"Warning: Top medoid at ({medoid[0]}, {medoid[1]}) not found in heatmap coordinates")
+                logging.info(f"Warning: {ANALYSIS_METHOD} Top cluster at ({cluster[0]}, {cluster[1]}) not found in heatmap coordinates")
 
     # Only plot centroids from valid clusters
-    print(f"Plotting centroids from valid clusters...")
+    logging.info(f"Plotting centroids from valid {ANALYSIS_METHOD} clusters...")
     centroids_plotted = 0
 
     # If valid_clusters is not provided, assume all centroids are valid
@@ -371,21 +376,20 @@ def create_cluster_visualization(X_filtered_full, medoids, top_medoids, centroid
     if valid_clusters is not None and labels is not None:
         # Only plot centroids from valid clusters
         plot_centroids = [centroids[i] for i in range(len(centroids)) if i in valid_clusters]
-        print(f"Filtering centroids to only include valid clusters: {valid_clusters}")
+        logging.info(f"Filtering centroids to only include valid {ANALYSIS_METHOD} clusters: {valid_clusters}")
     
     for i, centroid in enumerate(plot_centroids):
         # Get the actual raw centroid values
         short_sma = centroid[0]
         long_sma = centroid[1]
 
-        print(f"Centroid {i}: raw values = ({short_sma}, {long_sma})")
 
         # First try exact values
         try:
             if (short_sma in heatmap_data.columns) and (long_sma in heatmap_data.index) and (short_sma < long_sma):
                 x_pos = np.where(heatmap_data.columns == short_sma)[0][0] + 0.5
                 y_pos = np.where(heatmap_data.index == long_sma)[0][0] + 0.5
-                plt.scatter(x_pos, y_pos, marker='o', color='blue', s=75, zorder=4)
+                plt.scatter(x_pos, y_pos, marker='o', color='blue', s=45, zorder=4)
                 centroids_plotted += 1
                 continue
         except (IndexError, TypeError):
@@ -396,13 +400,13 @@ def create_cluster_visualization(X_filtered_full, medoids, top_medoids, centroid
             short_sma_rounded = int(round(short_sma))
             long_sma_rounded = int(round(long_sma))
 
-            print(f"  Rounded: ({short_sma_rounded}, {long_sma_rounded})")
+            logging.info(f"  Rounded: ({short_sma_rounded}, {long_sma_rounded})")
 
             if (short_sma_rounded in heatmap_data.columns) and (long_sma_rounded in heatmap_data.index) and (
                     short_sma_rounded < long_sma_rounded):
                 x_pos = np.where(heatmap_data.columns == short_sma_rounded)[0][0] + 0.5
                 y_pos = np.where(heatmap_data.index == long_sma_rounded)[0][0] + 0.5
-                plt.scatter(x_pos, y_pos, marker='o', color='blue', s=75, zorder=4)
+                plt.scatter(x_pos, y_pos, marker='o', color='blue', s=45, zorder=4)
                 centroids_plotted += 1
                 continue
         except (IndexError, TypeError):
@@ -422,33 +426,33 @@ def create_cluster_visualization(X_filtered_full, medoids, top_medoids, centroid
             long_idx = np.argmin(np.abs(long_options - long_sma))
             long_nearest = long_options[long_idx]
 
-            print(f"  Nearest: ({short_nearest}, {long_nearest})")
+            logging.info(f"  Nearest: ({short_nearest}, {long_nearest})")
 
             # Check if valid
             if short_nearest < long_nearest:
                 x_pos = np.where(heatmap_data.columns == short_nearest)[0][0] + 0.5
                 y_pos = np.where(heatmap_data.index == long_nearest)[0][0] + 0.5
-                plt.scatter(x_pos, y_pos, marker='o', color='blue', s=75, zorder=4, alpha=0.7)
+                plt.scatter(x_pos, y_pos, marker='o', color='blue', s=45, zorder=4, alpha=0.7)
                 centroids_plotted += 1
             else:
-                print(f"  Invalid nearest parameters (short >= long): {short_nearest} >= {long_nearest}")
+                logging.info(f"  Invalid nearest parameters (short >= long): {short_nearest} >= {long_nearest}")
         except (IndexError, TypeError) as e:
-            print(f"  Error finding nearest point: {e}")
+            logging.info(f"  Error finding nearest point: {e}")
 
-    print(f"Successfully plotted {centroids_plotted} out of {len(plot_centroids)} centroids")
+    logging.info(f"Successfully plotted {centroids_plotted} out of {len(plot_centroids)} centroids")
 
     # Create custom legend
     max_sharpe_handle = mlines.Line2D([], [], color='lime', marker='*', linestyle='None',
                                     markersize=15, markeredgecolor='black', label='Max Sharpe')
-    medoid_handle = mlines.Line2D([], [], color='black', marker='s', linestyle='None',
-                                markersize=10, label='Medoids')
-    top_medoid_handle = mlines.Line2D([], [], color='purple', marker='D', linestyle='None',
-                                    markersize=10, label='Top 5 Medoids')
+    cluster_handle = mlines.Line2D([], [], color='black', marker='s', linestyle='None',
+                                markersize=10, label='clusters')
+    top_cluster_handle = mlines.Line2D([], [], color='purple', marker='D', linestyle='None',
+                                    markersize=10, label='Top 5 clusters')
     centroid_handle = mlines.Line2D([], [], color='blue', marker='o', linestyle='None',
                                     markersize=10, label='Centroids')
 
     # Add legend
-    plt.legend(handles=[max_sharpe_handle, medoid_handle, top_medoid_handle, centroid_handle],
+    plt.legend(handles=[max_sharpe_handle, cluster_handle, top_cluster_handle, centroid_handle],
             loc='best')
 
     # Set labels and title
@@ -465,17 +469,17 @@ def create_cluster_visualization(X_filtered_full, medoids, top_medoids, centroid
     save_plot(f'{SYMBOL}_KMeans_Cluster_Analysis.png', OUTPUT_DIR)
 
 # Load the SMA simulation results
-def analyze_sma_results(file_path='optimized_strategies.pkl'):
-    print(f"Loading simulation results from {file_path}...")
+def analyze_sma_results(file_path='optimized_strategies.pkl', ANALYSIS_METHOD=ANALYSIS_METHOD):
+    logging.info(f"Loading simulation results from {file_path}...")
 
     # Load the data from the CSV file
     data = pd.read_pickle(file_path)
 
     # Print basic information about the data
-    print(f"Loaded {len(data)} simulation results")
-    print(f"Short SMA range: {data['short_SMA'].min()} to {data['short_SMA'].max()}")
-    print(f"Long SMA range: {data['long_SMA'].min()} to {data['long_SMA'].max()}")
-    print(f"Sharpe ratio range: {data['sharpe_ratio'].min():.4f} to {data['sharpe_ratio'].max():.4f}")
+    logging.info(f"Loaded {len(data)} simulation results")
+    logging.info(f"Short SMA range: {data['short_SMA'].min()} to {data['short_SMA'].max()}")
+    logging.info(f"Long SMA range: {data['long_SMA'].min()} to {data['long_SMA'].max()}")
+    logging.info(f"Sharpe ratio range: {data['sharpe_ratio'].min():.4f} to {data['sharpe_ratio'].max():.4f}")
 
     # Find the best Sharpe ratio
     best_idx = data['sharpe_ratio'].idxmax()
@@ -484,11 +488,11 @@ def analyze_sma_results(file_path='optimized_strategies.pkl'):
     best_sharpe = data.loc[best_idx, 'sharpe_ratio']
     best_trades = data.loc[best_idx, 'trades']
 
-    print(f"\nBest parameters:")
-    print(f"Short SMA: {best_short_sma}")
-    print(f"Long SMA: {best_long_sma}")
-    print(f"Sharpe Ratio: {best_sharpe:.6f}")
-    print(f"Number of Trades: {best_trades}")
+    logging.info(f"\nBest parameters:")
+    logging.info(f"Short SMA: {best_short_sma}")
+    logging.info(f"Long SMA: {best_long_sma}")
+    logging.info(f"Sharpe Ratio: {best_sharpe:.6f}")
+    logging.info(f"Number of Trades: {best_trades}")
 
     # Create a pivot table for the heatmap
     heatmap_data = data.pivot_table(
@@ -552,43 +556,43 @@ def analyze_sma_results(file_path='optimized_strategies.pkl'):
         bbox=dict(boxstyle="round,pad=0.3", fc="black", alpha=0.7)
     )
 
-    # Display the plot
-    plt.tight_layout()
-    save_plot(f'{SYMBOL}_KMeans_Heatmap.png', OUTPUT_DIR)
+    # Save the plot only when performing KMeans analysis
+    if ANALYSIS_METHOD.lower() == "kmeans":
+        save_plot(f'{SYMBOL}_KMeans_Heatmap.png', OUTPUT_DIR)
 
     # Return the data and best parameters
     return data, best_short_sma, best_long_sma, best_sharpe, best_trades
 
-def plot_strategy_performance(short_sma, long_sma, top_medoids, big_point_value,
-                        slippage, capital=TRADING_CAPITAL, atr_period=ATR_PERIOD):
+def plot_strategy_performance(short_sma, long_sma, top_clusters, big_point_value,
+                        slippage, capital=TRADING_CAPITAL, atr_period=ATR_PERIOD, ANALYSIS_METHOD=ANALYSIS_METHOD):
     """
-    Plot the strategy performance using the best SMA parameters and include top medoids
+    Plot the strategy performance using the best SMA parameters and include top clusters
     Uses the SMAStrategy class for consistent logic across the codebase
 
     Parameters:
     short_sma: int - The short SMA period
     long_sma: int - The long SMA period
-    top_medoids: list - List of top medoids, each as (short_sma, long_sma, sharpe, trades)
+    top_clusters: list - List of top clusters, each as (short_sma, long_sma, sharpe, trades)
     big_point_value: float - Big point value for the futures contract
     slippage: float - Slippage value in price units
     capital: float - Capital allocation for position sizing
     atr_period: int - Period for ATR calculation
     """
-    print(f"\n----- PLOTTING STRATEGY PERFORMANCE -----")
-    print(f"Using Short SMA: {short_sma}, Long SMA: {long_sma}")
-    print(f"Trading with ATR-based position sizing (Capital: ${capital:,}, ATR Period: {atr_period})")
-    if top_medoids:
-        print(f"Including top {len(top_medoids)} medoids")
+    logging.info(f"\n----- {ANALYSIS_METHOD} PLOTTING STRATEGY PERFORMANCE -----")
+    logging.info(f"Using Short SMA: {short_sma}, Long SMA: {long_sma}")
+    logging.info(f"Trading with ATR-based position sizing (Capital: ${capital:,}, ATR Period: {atr_period})")
+    if top_clusters:
+        logging.info(f"Including top {len(top_clusters)} clusters")
 
     # Load data from local file
-    print(f"Loading {TICKER} data from local files...")
+    logging.info(f"Loading {TICKER} data from local files...")
     data_file = find_futures_file(SYMBOL, DATA_DIR)
     if not data_file:
-        print(f"Error: No data file found for {TICKER} in {DATA_DIR}")
+        logging.info(f"Error: No data file found for {TICKER} in {DATA_DIR}")
         exit(1)
 
-    print(f"Found data file: {os.path.basename(data_file)}")
-    print(f"File size: {os.path.getsize(data_file)} bytes")
+    logging.info(f"Found data file: {os.path.basename(data_file)}")
+    logging.info(f"File size: {os.path.getsize(data_file)} bytes")
 
     # Load the data from local file
     all_data = read_ts.read_ts_ohlcv_dat(data_file)
@@ -624,17 +628,17 @@ def plot_strategy_performance(short_sma, long_sma, top_medoids, big_point_value,
         'Best': {'short_sma': short_sma, 'long_sma': long_sma}
     }
 
-    # Add medoids in their original order, including original Sharpe and Trades
-    if top_medoids:
-        print("\nUSING THESE MEDOIDS (IN ORIGINAL ORDER):")
-        for i, medoid in enumerate(top_medoids, 1):
-            strategies[f'Medoid {i}'] = {
-                'short_sma': int(medoid[0]),
-                'long_sma': int(medoid[1]),
-                'original_sharpe': float(medoid[2]),  # Store the original Sharpe ratio
-                'original_trades': int(medoid[3])     # Store the original number of trades
+    # Add clusters in their original order, including original Sharpe and Trades
+    if top_clusters:
+        logging.info(f"\nUSING THESE {ANALYSIS_METHOD} clusters (IN ORIGINAL ORDER):")
+        for i, cluster in enumerate(top_clusters, 1):
+            strategies[f'cluster {i}'] = {
+                'short_sma': int(cluster[0]),
+                'long_sma': int(cluster[1]),
+                'original_sharpe': float(cluster[2]),  # Store the original Sharpe ratio
+                'original_trades': int(cluster[3])     # Store the original number of trades
             }
-            print(f"Medoid {i}: SMA({int(medoid[0])}/{int(medoid[1])}) - Original Sharpe: {float(medoid[2]):.4f}, Trades: {int(medoid[3])}")
+            logging.info(f"{ANALYSIS_METHOD} cluster {i}: SMA({int(cluster[0])}/{int(cluster[1])}) - Original Sharpe: {float(cluster[2]):.4f}, Trades: {int(cluster[3])}")
 
     # Apply the proper strategy for each parameter set
     for name, params in strategies.items():
@@ -658,7 +662,7 @@ def plot_strategy_performance(short_sma, long_sma, top_medoids, big_point_value,
     # Trim data to the original date range if we added warm-up period
     if original_start_idx is not None:
         data_for_evaluation = data.iloc[original_start_idx:].copy()
-        print(f"Trimmed warm-up period. Evaluation data length: {len(data_for_evaluation)}")
+        logging.info(f"Trimmed warm-up period. Evaluation data length: {len(data_for_evaluation)}")
     else:
         raise ValueError("original_start_idx is None, cannot proceed with evaluation.")
     
@@ -750,52 +754,53 @@ def plot_strategy_performance(short_sma, long_sma, top_medoids, big_point_value,
     plt.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    save_plot(f'{SYMBOL}_KMeans_Multiple_Strategy_Plots.png', OUTPUT_DIR)
+    # Save the plot according to the chosen clustering method
+    if ANALYSIS_METHOD.lower() == "kmeans":
+        save_plot(f'{SYMBOL}_KMeans_Multiple_Strategy_Plots.png', OUTPUT_DIR)
+    else:  # Assume hierarchical for any non-KMeans value
+        save_plot(f'{SYMBOL}_Hierarchical_Multiple_Strategy_Plots.png', OUTPUT_DIR)
 
-    # The detailed performance summary that followed used to re-compute metrics
-    # for each strategy and print them to the console. Since we now obtain the
-    # metrics above (for the legend), that block is redundant and has been
-    # removed to avoid duplicate calculations and console spam.
 
     return data_for_evaluation  # Trimmed data
 
 def bimonthly_out_of_sample_comparison(data, 
                                        best_short_sma, 
                                        best_long_sma,
-                                       top_medoids, 
+                                       top_clusters, 
                                        big_point_value,
-                                       slippage, 
-                                       min_sharpe=MIN_SHARPE,
+                                       slippage,
                                        capital=TRADING_CAPITAL,
-                                       atr_period=ATR_PERIOD):
+                                        atr_period=ATR_PERIOD,
+                                        min_sharpe=MIN_SHARPE,
+                                        ANALYSIS_METHOD=ANALYSIS_METHOD):
     """
-    Compare bimonthly (2-month) performance between the best Sharpe strategy and a portfolio of top medoids
+    Compare bimonthly (2-month) performance between the best Sharpe strategy and a portfolio of top clusters
     using ATR-based position sizing.
     
     Parameters:
     data: DataFrame with market data
     best_short_sma: int - The short SMA period for the best Sharpe strategy
     best_long_sma: int - The long SMA period for the best Sharpe strategy
-    top_medoids: list - List of top medoids, each as (short_sma, long_sma, sharpe, trades)
-    min_sharpe: float - Minimum Sharpe ratio threshold for medoids to be included
+    top_clusters: list - List of top clusters, each as (short_sma, long_sma, sharpe, trades)
+    min_sharpe: float - Minimum Sharpe ratio threshold for clusters to be included
     big_point_value: float - Big point value for the futures contract
     dynamic_slippage: float - Slippage value in price units
     capital: float - Capital allocation for position sizing
     atr_period: int - Period for ATR calculation
     """
-    print(f"\n----- BIMONTHLY OUT-OF-SAMPLE COMPARISON -----")
-    print(f"Best Sharpe: ({best_short_sma}/{best_long_sma})")
-    print(f"Using ATR-based position sizing (Capital: ${capital:,}, ATR Period: {atr_period})")
+    logging.info(f"\n----- BIMONTHLY OUT-OF-SAMPLE COMPARISON -----")
+    logging.info(f"Best Sharpe: ({best_short_sma}/{best_long_sma})")
+    logging.info(f"Using ATR-based position sizing (Capital: ${capital:,}, ATR Period: {atr_period})")
     
     
-    # Handle the case where top_medoids is None
-    if top_medoids is None:
-        raise ValueError("No medoids provided. Comparison cannot be performed.")
+    # Handle the case where top_clusters is None
+    if top_clusters is None:
+        raise ValueError("No clusters provided. Comparison cannot be performed.")
     
-    # Use the provided collection of medoids directly
-    # Take at most 3 medoids and filter by minimum Sharpe
-    filtered_medoids = []
-    for m in top_medoids[:3]:
+    # Use the provided collection of clusters directly
+    # Take at most 3 clusters and filter by minimum Sharpe
+    filtered_clusters = []
+    for m in top_clusters[:3]:
         # Extract Sharpe ratio and check if it meets the threshold
         short_sma = m[0]
         long_sma = m[1]
@@ -803,24 +808,24 @@ def bimonthly_out_of_sample_comparison(data,
         trades = m[3]
         
         if sharpe >= min_sharpe:
-            filtered_medoids.append(m)
+            filtered_clusters.append(m)
     
-    if not filtered_medoids:
-        print(f"No medoids have a Sharpe ratio >= {min_sharpe}. Comparison cannot be performed.")
+    if not filtered_clusters:
+        logging.info(f"No {ANALYSIS_METHOD} clusters have a Sharpe ratio >= {min_sharpe}. Comparison cannot be performed.")
         return None
     
-    print(f"Creating portfolio of {len(filtered_medoids)} medoids with Sharpe ratio >= {min_sharpe}:")
-    for i, medoid in enumerate(filtered_medoids, 1):
-        print(f"Medoid {i}: ({int(medoid[0])}/{int(medoid[1])}) - Sharpe: {float(medoid[2]):.4f}")
+    logging.info(f"Creating portfolio of {len(filtered_clusters)} {ANALYSIS_METHOD} clusters with Sharpe ratio >= {min_sharpe}:")
+    for i, cluster in enumerate(filtered_clusters, 1):
+        logging.info(f"cluster {i}: ({int(cluster[0])}/{int(cluster[1])}) - Sharpe: {float(cluster[2]):.4f}")
     
     # Load data from local file
-    print(f"Loading {TICKER} data from local files...")
+    logging.info(f"Loading {TICKER} data from local files...")
     data_file = find_futures_file(SYMBOL, DATA_DIR)
     if not data_file:
         raise FileNotFoundError(f"No data file found for {TICKER} in {DATA_DIR}")
     
-    print(f"Found data file: {os.path.basename(data_file)}")
-    print(f"File size: {os.path.getsize(data_file)} bytes")
+    logging.info(f"Found data file: {os.path.basename(data_file)}")
+    logging.info(f"File size: {os.path.getsize(data_file)} bytes")
 
         
     # Create strategies
@@ -828,9 +833,9 @@ def bimonthly_out_of_sample_comparison(data,
         'Best': {'short_sma': best_short_sma, 'long_sma': best_long_sma}
     }
     
-    # Add filtered medoids
-    for i, medoid in enumerate(filtered_medoids, 1):
-        strategies[f'Medoid_{i}'] = {'short_sma': int(medoid[0]), 'long_sma': int(medoid[1])}
+    # Add filtered clusters
+    for i, cluster in enumerate(filtered_clusters, 1):
+        strategies[f'cluster_{i}'] = {'short_sma': int(cluster[0]), 'long_sma': int(cluster[1])}
     
     # Apply each strategy to the data
     for name, params in strategies.items():
@@ -853,7 +858,7 @@ def bimonthly_out_of_sample_comparison(data,
     # Get the out-of-sample split date
     split_index = int(len(data) * TRAIN_TEST_SPLIT)
     split_date = data.index[split_index]
-    print(f"Out-of-sample period starts on: {split_date.strftime('%Y-%m-%d')}")
+    logging.info(f"Out-of-sample period starts on: {split_date.strftime('%Y-%m-%d')}")
     
     # Get out-of-sample data
     oos_data = data.iloc[split_index:].copy()
@@ -904,7 +909,7 @@ def bimonthly_out_of_sample_comparison(data,
         # ------------------------------------------------------------
         # Calculate Sharpe for:
         #   • Best strategy (single PnL column)
-        #   • Portfolio = *average* daily PnL of the filtered medoids
+        #   • Portfolio = *average* daily PnL of the filtered clusters
         # ------------------------------------------------------------
 
         # --- Best strategy ---
@@ -914,12 +919,12 @@ def bimonthly_out_of_sample_comparison(data,
         else:
             best_sharpe = 0.0
 
-        # --- Portfolio (average of medoids) ---
-        medoid_cols = [f'Daily_PnL_Medoid_{i}' for i in range(1, len(filtered_medoids) + 1)]
-        if medoid_cols:
-            portfolio_returns = group[medoid_cols].mean(axis=1)
+        # --- Portfolio (average of clusters) ---
+        cluster_cols = [f'Daily_PnL_cluster_{i}' for i in range(1, len(filtered_clusters) + 1)]
+        if cluster_cols:
+            portfolio_returns = group[cluster_cols].mean(axis=1)
         else:
-            raise ValueError("No medoid columns found for portfolio calculation.")
+            raise ValueError("No cluster columns found for portfolio calculation.")
 
         if len(portfolio_returns) > 1 and portfolio_returns.std() > 0:
             portfolio_sharpe = portfolio_returns.mean() / portfolio_returns.std() * np.sqrt(252)
@@ -928,46 +933,78 @@ def bimonthly_out_of_sample_comparison(data,
 
         # Store metrics
         bimonthly_result['Best_sharpe'] = best_sharpe
-        bimonthly_result['Best_return'] = best_returns.sum()
-        bimonthly_result['Avg_Medoid_sharpe'] = portfolio_sharpe
-        bimonthly_result['Avg_Medoid_return'] = portfolio_returns.sum()
+        bimonthly_result['Avg_cluster_sharpe'] = portfolio_sharpe
         
         bimonthly_sharpe.append(bimonthly_result)
     
     # Convert to DataFrame
     bimonthly_sharpe_df = pd.DataFrame(bimonthly_sharpe)
+    logging.info(bimonthly_sharpe_df)
     
     # Sort the DataFrame by date for proper chronological display
     bimonthly_sharpe_df = bimonthly_sharpe_df.sort_values('date')
     
     # Add rounded values to dataframe for calculations
     bimonthly_sharpe_df['Best_sharpe_rounded'] = np.round(bimonthly_sharpe_df['Best_sharpe'], 1)
-    bimonthly_sharpe_df['Avg_Medoid_sharpe_rounded'] = np.round(bimonthly_sharpe_df['Avg_Medoid_sharpe'], 1)
+    bimonthly_sharpe_df['Avg_cluster_sharpe_rounded'] = np.round(bimonthly_sharpe_df['Avg_cluster_sharpe'], 1)
     
     # Print detailed comparison of Sharpe ratios
-    print("\nDetailed Sharpe ratio comparison by period:")
-    print(f"{'Period':<12} | {'Best Sharpe':>12} | {'Medoid Portfolio':>16} | {'Difference':>12} | {'Portfolio Wins':<14}")
-    print("-" * 80)
+    logging.info("\nDetailed Sharpe ratio comparison by period:")
+    logging.info(f"{'Period':<12} | {'Best Sharpe':>12} | {'{ANALYSIS_METHOD} Portfolio':>16} | {'Difference':>12} | {'{ANALYSIS_METHOD} Portfolio Wins':<14}")
+    logging.info("-" * 80)
     
+    excluded_periods = []
+
     for idx, row in bimonthly_sharpe_df.iterrows():
         period = row['period_label']
         best_sharpe = row['Best_sharpe']
-        avg_medoid_sharpe = row['Avg_Medoid_sharpe']
+        avg_cluster_sharpe = row['Avg_cluster_sharpe']
         best_rounded = row['Best_sharpe_rounded']
-        avg_medoid_rounded = row['Avg_Medoid_sharpe_rounded']
-        
-        diff = avg_medoid_sharpe - best_sharpe
-        portfolio_wins = avg_medoid_sharpe >= best_sharpe
-        
-        print(f"{period:<12} | {best_sharpe:12.6f} | {avg_medoid_sharpe:16.6f} | {diff:12.6f} | {portfolio_wins!s:<14}")
+        avg_cluster_rounded = row['Avg_cluster_sharpe_rounded']
+
+        diff = avg_cluster_rounded - best_rounded
+
+        if diff == 0:
+            status = "Excluded"
+            excluded_periods.append(period)
+        else:
+            status = "True" if avg_cluster_sharpe > best_sharpe else "False"
+
+        # Display values rounded to one decimal place for readability
+        logging.info(
+            f"{period:<12} | {best_sharpe:12.1f} | {avg_cluster_sharpe:16.1f} | {diff:12.1f} | {status:<14}"
+        )
+
+    # Print excluded periods summary
+    if excluded_periods:
+        logging.info("\nExcluded periods (identical Sharpe ratios): " + ", ".join(excluded_periods))
+    else:
+        logging.info("\nNo periods were excluded due to identical Sharpe ratios.")
     
-    # Calculate win rate using rounded values (for alternative comparison)
-    total_periods = len(bimonthly_sharpe_df)
-    rounded_wins = sum(bimonthly_sharpe_df['Avg_Medoid_sharpe_rounded'] >= bimonthly_sharpe_df['Best_sharpe_rounded'])
-    rounded_win_percentage = (rounded_wins / total_periods) * 100 if total_periods > 0 else 0
+    # ------------------------------------------------------------
+    # Win-rate calculation – exclude tie periods (rounded values equal)
+    # ------------------------------------------------------------
+    mask_not_tied = bimonthly_sharpe_df['Avg_cluster_sharpe_rounded'] != bimonthly_sharpe_df['Best_sharpe_rounded']
+
+    total_comparable_periods = mask_not_tied.sum()
+
+    rounded_wins = (
+        bimonthly_sharpe_df.loc[mask_not_tied, 'Avg_cluster_sharpe_rounded']
+        > bimonthly_sharpe_df.loc[mask_not_tied, 'Best_sharpe_rounded']
+    ).sum()
+
+    rounded_win_percentage = (
+        (rounded_wins / total_comparable_periods) * 100 if total_comparable_periods > 0 else 0
+    )
     
-    print(f"\nBimonthly periods analyzed: {total_periods}")
-    print(f"Using rounded values (1 decimal places): {rounded_wins} of {total_periods} periods ({rounded_win_percentage:.2f}%)")
+    # Summary of periods and wins
+    total_periods_initial = len(bimonthly_sharpe_df)
+    logging.info(f"\nTotal periods before exclusion: {total_periods_initial}")
+    logging.info(f"Bimonthly periods analyzed (after excluding ties): {total_comparable_periods}")
+    logging.info(
+        f"{ANALYSIS_METHOD} cluster wins (rounded comparison): {rounded_wins} of {total_comparable_periods} periods "
+        f"({rounded_win_percentage:.2f}% win rate)"
+    )
     
     # Create a bar plot to compare bimonthly Sharpe ratios
     plt.figure(figsize=(14, 8))
@@ -979,19 +1016,20 @@ def bimonthly_out_of_sample_comparison(data,
     # Create bars
     plt.bar(x - width/2, bimonthly_sharpe_df['Best_sharpe'], width, 
         label=f'Best Sharpe ({best_short_sma}/{best_long_sma})', color='blue')
-    plt.bar(x + width/2, bimonthly_sharpe_df['Avg_Medoid_sharpe'], width, 
-        label=f'Medoid Portfolio ({len(filtered_medoids)} strategies)', color='green')
+    plt.bar(x + width/2, bimonthly_sharpe_df['Avg_cluster_sharpe'], width, 
+        label=f'{ANALYSIS_METHOD} Portfolio ({len(filtered_clusters)} strategies)', color='green')
     
     # Add a horizontal line at Sharpe = 0
     plt.axhline(y=0, color='black', linestyle='-', alpha=0.3)
     
-    # Create medoid description for the title
-    medoid_desc = ", ".join([f"({int(m[0])}/{int(m[1])})" for m in filtered_medoids])
+    # Create cluster description for the title
+    cluster_desc = ", ".join([f"({int(m[0])}/{int(m[1])})" for m in filtered_clusters])
     
     # Customize the plot - using rounded win percentage instead of raw
-    plt.title(f'{SYMBOL} Kmeans Bimonthly Sharpe Ratio Comparison (Out-of-Sample Period)\n' + 
-            f'Medoid Portfolio [{medoid_desc}] outperformed {rounded_win_percentage:.2f}% of the time', 
-            fontsize=14)
+    plt.title(
+        f'{SYMBOL} {ANALYSIS_METHOD} Bimonthly Sharpe Ratio Comparison (Out-of-Sample Period)\n'
+        + f'{ANALYSIS_METHOD} Portfolio [{cluster_desc}] outperformed {rounded_win_percentage:.2f}% of the time',
+        fontsize=14)
     plt.xlabel('Bimonthly Period (Start Month)', fontsize=12)
     plt.ylabel('Sharpe Ratio (Annualized)', fontsize=12)
     
@@ -1000,24 +1038,40 @@ def bimonthly_out_of_sample_comparison(data,
     
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     
-    # Create legend with both strategies - moved to bottom to avoid overlap with title
-    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2,
-            frameon=True, fancybox=True, framealpha=0.9, fontsize=10)
+    # Place legend in upper-left inside axes with slight offset to avoid title overlap
+    plt.legend(
+        loc="upper left",
+        bbox_to_anchor=(0.02, 0.98),  # slight inset from edges
+        ncol=1,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        fontsize=10,
+    )
     
-    # Add a text box with rounded win percentage instead of raw - moved to right side
-    plt.annotate(f'Medoid Portfolio Win Rate: {rounded_win_percentage:.2f}%\n'
-                f'({rounded_wins} out of {total_periods} periods)\n'
-                f'Portfolio: {len(filtered_medoids)} medoids with Sharpe ≥ {min_sharpe}\n'
-                f'ATR-Based Position Sizing (${capital:,}, {atr_period} days)',
-                xy=(0.7, 0.95), xycoords='axes fraction',
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8),
-                fontsize=12)
+    # Move informational textbox slightly lower/right to avoid overlap
+    plt.annotate(
+        (
+            f"{ANALYSIS_METHOD} Portfolio Win Rate: {rounded_win_percentage:.2f}%\n"
+            f"({rounded_wins} out of {total_comparable_periods} periods)\n"
+            f"Portfolio: {len(filtered_clusters)} clusters with Sharpe >= {min_sharpe}\n"
+            f"ATR-Based Position Sizing (${capital:,}, {atr_period} days)"
+        ),
+        xy=(0.70, 0.80),  # lowered y from 0.95 to 0.80
+        xycoords="axes fraction",
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8),
+        fontsize=12,
+    )
     
     plt.tight_layout(rect=[0, 0, 1, 0.95])  # Add extra space at the bottom for the legend
-    save_plot(f'{SYMBOL}_KMeans_Bimonthly_Comparison.png', OUTPUT_DIR)
-    
-    
-    # Save win percentage and medoid parameters to Excel file (let any exceptions propagate)
+
+    # Save plot according to analysis method
+    if ANALYSIS_METHOD.lower() == "kmeans":
+        save_plot(f'{SYMBOL}_KMeans_Bimonthly_Comparison.png', OUTPUT_DIR)
+    else:
+        save_plot(f'{SYMBOL}_Hierarchical_Bimonthly_Comparison.png', OUTPUT_DIR)
+
+    # Save win percentage and cluster parameters to Excel file (let any exceptions propagate)
 
 
     # Path to the Excel file
@@ -1027,7 +1081,7 @@ def bimonthly_out_of_sample_comparison(data,
     if not os.path.exists(excel_file):
         raise FileNotFoundError(f"Excel file not found at: {excel_file}")
 
-    print(f"Updating Excel file with K-means results for {SYMBOL}...")
+    logging.info(f"Updating Excel file with {ANALYSIS_METHOD} results for {SYMBOL}...")
 
     # Load the workbook
     wb = openpyxl.load_workbook(excel_file)
@@ -1055,14 +1109,25 @@ def bimonthly_out_of_sample_comparison(data,
     # Round the win percentage to one decimal place
     rounded_win_percentage_1dp = round(rounded_win_percentage, 1)
 
-    # Write the win percentage in column B (K-means)
-    sheet.cell(row=ticker_row, column=2).value = rounded_win_percentage_1dp
+    # --------------------------------------------------------------
+    # Write results to Excel – choose columns based on analysis type
+    #   • KMeans       : win % -> B (2); clusters -> E/F/G (5–7)
+    #   • Hierarchical : win % -> C (3); clusters -> I/J/K (9–11)
+    # --------------------------------------------------------------
+    if ANALYSIS_METHOD.lower() == "kmeans":
+        win_col = 2      # Column B
+        cluster_start_col = 5  # Columns E, F, G
+    else:  # Treat any non-kmeans value as Hierarchical
+        win_col = 3      # Column C
+        cluster_start_col = 9  # Columns I, J, K
 
-    # Write the medoid parameters in the respective cluster columns (up to 3)
-    for i, medoid in enumerate(filtered_medoids[:3]):
-        # Columns E (5), F (6), G (7)
-        column_idx = 5 + i
-        param_value = f"{int(medoid[0])}/{int(medoid[1])}"
+    # Write the win percentage
+    sheet.cell(row=ticker_row, column=win_col).value = rounded_win_percentage_1dp
+
+    # Write the cluster parameters (up to 3)
+    for i, cluster in enumerate(filtered_clusters[:3]):
+        column_idx = cluster_start_col + i
+        param_value = f"{int(cluster[0])}/{int(cluster[1])}"
         sheet.cell(row=ticker_row, column=column_idx).value = param_value
 
     # Write the best Sharpe parameters in column M (13)
@@ -1072,19 +1137,17 @@ def bimonthly_out_of_sample_comparison(data,
     # Save the workbook
     wb.save(excel_file)
 
-    print(
-        f"Excel file updated successfully. Added {SYMBOL} with K-means win rate {rounded_win_percentage_1dp}% in row {ticker_row}"
-    )
-    print(f"Added best Sharpe parameters {best_sharpe_params} in column M")
+    logging.info(f"Excel file updated successfully. Added {SYMBOL} with {ANALYSIS_METHOD} win rate {rounded_win_percentage_1dp}% in row {ticker_row}")
+    logging.info(f"Added best Sharpe parameters {best_sharpe_params} in column M")
 
     # Return the bimonthly Sharpe ratio data
     return bimonthly_sharpe_df
 
-def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_medoids,
+def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_clusters,
                             big_point_value, slippage, capital=TRADING_CAPITAL, atr_period=ATR_PERIOD,
-                            min_sharpe=MIN_SHARPE):
+                            min_sharpe=MIN_SHARPE, ANALYSIS_METHOD=ANALYSIS_METHOD):
     """
-    Plot a comparison between the best strategy and a portfolio of up to 3 medoids that meet a minimum Sharpe ratio.
+    Plot a comparison between the best strategy and a portfolio of up to 3 clusters that meet a minimum Sharpe ratio.
     Only shows the P&L comparison plot without the price/SMA indicators.
     Also writes TRUE/FALSE to Excel column T based on whether the Portfolio
     outperforms the Best strategy in terms of out-of-sample Sharpe ratio.
@@ -1093,16 +1156,16 @@ def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_medoid
     data: DataFrame with market data that already has strategies applied
     best_short_sma: int - The short SMA period for the best strategy
     best_long_sma: int - The long SMA period for the best strategy
-    top_medoids: list - List of top medoids by Sharpe ratio
+    top_clusters: list - List of top clusters by Sharpe ratio
     big_point_value: float - Big point value for the futures contract
     slippage: float - Slippage value in price units
     capital: float - Capital allocation for position sizing
     atr_period: int - Period for ATR calculation
-    min_sharpe: float - Minimum Sharpe ratio threshold to include a medoid in the portfolio
+    min_sharpe: float - Minimum Sharpe ratio threshold to include a cluster in the portfolio
     """
-    print(f"\n----- FULL OUT-OF-SAMPLE PERFORMANCE ANALYSIS -----")
-    print(f"Using Best Strategy: Short SMA: {best_short_sma}, Long SMA: {best_long_sma}")
-    print(f"Creating portfolio from top 3 medoids with Sharpe ≥ {min_sharpe}")
+    logging.info(f"\n----- {ANALYSIS_METHOD} FULL OUT-OF-SAMPLE PERFORMANCE ANALYSIS -----")
+    logging.info(f"Using Best Strategy: Short SMA: {best_short_sma}, Long SMA: {best_long_sma}")
+    logging.info(f"Creating portfolio from top 3 {ANALYSIS_METHOD} clusters with Sharpe >= {min_sharpe}")
     
     # Calculate split index for in-sample/out-of-sample
     split_index = int(len(data) * TRAIN_TEST_SPLIT)
@@ -1113,36 +1176,36 @@ def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_medoid
         'Best': {'short_sma': best_short_sma, 'long_sma': best_long_sma}
     }
     
-    # Filter medoids by minimum Sharpe ratio and take the first three that qualify
-    filtered_medoids = []
-    for m in top_medoids[:3]:
+    # Filter clusters by minimum Sharpe ratio and take the first three that qualify
+    filtered_clusters = []
+    for m in top_clusters[:3]:
         sharpe_val = float(m[2])
         if sharpe_val >= min_sharpe:
-            filtered_medoids.append(m)
+            filtered_clusters.append(m)
 
-    if not filtered_medoids:
-        print(f"No medoids have a Sharpe ratio ≥ {min_sharpe}. Using only the Best strategy for comparison.")
-        filtered_medoids = []  # Ensure it's defined for later references
+    if not filtered_clusters:
+        logging.info(f"No {ANALYSIS_METHOD} clusters have a Sharpe ratio >= {min_sharpe}. Using only the Best strategy for comparison.")
+        filtered_clusters = []  # Ensure it's defined for later references
 
-    # Add the filtered medoids to the strategies dictionary
-    medoid_strategies = []
-    for i, medoid in enumerate(filtered_medoids, 1):
-        strategy_name = f'Medoid {i}'  # Use space instead of underscore to match existing columns
-        medoid_strategies.append(strategy_name)
+    # Add the filtered clusters to the strategies dictionary
+    cluster_strategies = []
+    for i, cluster in enumerate(filtered_clusters, 1):
+        strategy_name = f'cluster {i}'  # Use space instead of underscore to match existing columns
+        cluster_strategies.append(strategy_name)
         all_strategies[strategy_name] = {
-            'short_sma': int(medoid[0]),
-            'long_sma': int(medoid[1]),
-            'original_sharpe': float(medoid[2]),
-            'original_trades': int(medoid[3])
+            'short_sma': int(cluster[0]),
+            'long_sma': int(cluster[1]),
+            'original_sharpe': float(cluster[2]),
+            'original_trades': int(cluster[3])
         }
-        print(f"Added {strategy_name} to portfolio: SMA({int(medoid[0])}/{int(medoid[1])}) - Original Sharpe: {float(medoid[2]):.4f}")
+        logging.info(f"Added {strategy_name} to portfolio: SMA({int(cluster[0])}/{int(cluster[1])}) - Original Sharpe: {float(cluster[2]):.4f}")
     
-    # Create the portfolio PnL by averaging the medoid strategies
-    print("Calculating portfolio PnL as average of medoid strategies...")
+    # Create the portfolio PnL by averaging the cluster strategies
+    logging.info(f"Calculating {ANALYSIS_METHOD} portfolio PnL as average of cluster strategies...")
     
     # Check if we have enough data to create a portfolio
-    if len(medoid_strategies) == 0:
-        print("Error: No medoid strategies found to create portfolio")
+    if len(cluster_strategies) == 0:
+        logging.info(f"Error: No {ANALYSIS_METHOD} cluster strategies found to create portfolio")
         return data
     
     # Create portfolio daily PnL series
@@ -1150,25 +1213,25 @@ def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_medoid
     valid_strategies = 0
     
     # Print available columns for debugging
-    print("\nAvailable columns that might contain Daily PnL data:")
+    logging.info("\nAvailable columns that might contain Daily PnL data:")
     pnl_cols = [col for col in data.columns if 'Daily_PnL' in col]
     for col in pnl_cols:
-        print(f"  - {col}")
+        logging.info(f"  - {col}")
     
-    for strategy in medoid_strategies:
+    for strategy in cluster_strategies:
         # Try both naming conventions
         daily_pnl_col = f'Daily_PnL_{strategy}'
         
         if daily_pnl_col in data.columns:
             portfolio_daily_pnl += data[daily_pnl_col]
             valid_strategies += 1
-            print(f"Added {daily_pnl_col} to portfolio")
+            logging.info(f"Added {ANALYSIS_METHOD} {daily_pnl_col} to portfolio")
         else:
             raise ValueError(f"Error: Column {daily_pnl_col} not found")
     
     # If no valid strategies found, we can't create a portfolio
     if valid_strategies == 0:
-        print("Error: No valid strategy data found for portfolio. Plotting only Best strategy.")
+        logging.info(f"Error: No valid {ANALYSIS_METHOD} strategy data found for portfolio. Plotting only Best strategy.")
         # Set portfolio to same as Best for plotting purposes
         portfolio_daily_pnl = data['Daily_PnL_Best'].copy()
         valid_strategies = 1
@@ -1231,8 +1294,8 @@ def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_medoid
         if name == 'Best':
             params_str = f"({best_short_sma}/{best_long_sma})"
         else:
-            medoid_params = [f"{int(m[0])}/{int(m[1])}" for m in filtered_medoids]
-            params_str = f"({', '.join(medoid_params)})"
+            cluster_params = [f"{int(m[0])}/{int(m[1])}" for m in filtered_clusters]
+            params_str = f"({', '.join(cluster_params)})"
 
         label = (
             f"{name} {params_str} [IS Sharpe: {in_sample_sharpe:.2f}, "
@@ -1259,20 +1322,26 @@ def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_medoid
                 label=f'Train/Test Split ({int(TRAIN_TEST_SPLIT * 100)}%/{int((1 - TRAIN_TEST_SPLIT) * 100)}%)')
     plt.axhline(y=0.0, color='gray', linestyle='-', alpha=0.5, label='Break-even')
     plt.legend(loc='upper left')
-    plt.title(f'{SYMBOL} Strategy Comparison: Best vs Portfolio of Medoids', fontsize=14)
+    plt.title(f'{SYMBOL} Strategy Comparison: Best vs Portfolio of {ANALYSIS_METHOD}', fontsize=14)
     plt.ylabel('P&L ($)', fontsize=12)
     plt.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    save_plot(f'{SYMBOL}_KMeans_Full_OOS_Performance_Analysis.png', OUTPUT_DIR)
-    
-    print(f"Full out-of-sample performance analysis plot saved to '{SYMBOL}_KMeans_Full_OOS_Performance_Analysis.png'")
+    # Save plot according to analysis method
+    if ANALYSIS_METHOD.lower() == "kmeans":
+        filename = f"{SYMBOL}_KMeans_Full_OOS_Performance_Analysis.png"
+    else:  # Assume hierarchical for any non-KMeans value
+        filename = f"{SYMBOL}_Hierarchical_Full_OOS_Performance_Analysis.png"
+
+    save_plot(filename, OUTPUT_DIR)
+
+    logging.info(f"Full out-of-sample performance analysis plot saved to '{SYMBOL}_{ANALYSIS_METHOD}_Full_OOS_Performance_Analysis.png'")
     
     # Determine if Portfolio outperforms Best in terms of OOS Sharpe
     portfolio_wins = oos_sharpe_ratios['Portfolio'] > oos_sharpe_ratios['Best']
-    print(f"Portfolio out-of-sample Sharpe: {oos_sharpe_ratios['Portfolio']:.4f}")
-    print(f"Best out-of-sample Sharpe: {oos_sharpe_ratios['Best']:.4f}")
-    print(f"Portfolio outperforms Best in OOS: {portfolio_wins}")
+    logging.info(f"{ANALYSIS_METHOD} Portfolio out-of-sample Sharpe: {oos_sharpe_ratios['Portfolio']:.4f}")
+    logging.info(f"{ANALYSIS_METHOD} Best out-of-sample Sharpe: {oos_sharpe_ratios['Best']:.4f}")
+    logging.info(f"{ANALYSIS_METHOD} Portfolio outperforms Best in OOS: {portfolio_wins}")
     
 
 
@@ -1283,7 +1352,7 @@ def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_medoid
     if not os.path.exists(excel_file):
         raise FileNotFoundError(f"Excel file not found at: {excel_file}")
 
-    print(f"Updating Excel file with OOS comparison results for {SYMBOL}...")
+    logging.info(f"Updating Excel file with {ANALYSIS_METHOD} OOS comparison results for {SYMBOL}...")
 
     # Load the workbook
     wb = openpyxl.load_workbook(excel_file)
@@ -1309,14 +1378,26 @@ def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_medoid
             break
         row += 1
 
-    # Write out-of-sample Sharpe ratios to columns Z (26) and AA (27)
-    sheet.cell(row=ticker_row, column=26).value = round(oos_sharpe_ratios['Best'], 4)
-    sheet.cell(row=ticker_row, column=27).value = round(oos_sharpe_ratios['Portfolio'], 4)
+    # --------------------------------------------------------------
+    # Write out-of-sample Sharpe ratios according to analysis type
+    #   • KMeans       : Best -> Z (26), Portfolio -> AA (27)
+    #   • Hierarchical : Best -> Z (26), Portfolio -> AB (28)
+    # --------------------------------------------------------------
+
+    best_oos_col = 26  # Column Z – always stores the Best strategy OOS Sharpe
+
+    if ANALYSIS_METHOD.lower() == "kmeans":
+        portfolio_oos_col = 27  # Column AA for KMeans portfolio Sharpe
+    else:
+        portfolio_oos_col = 28  # Column AB for Hierarchical portfolio Sharpe
+
+    sheet.cell(row=ticker_row, column=best_oos_col).value = round(oos_sharpe_ratios['Best'], 4)
+    sheet.cell(row=ticker_row, column=portfolio_oos_col).value = round(oos_sharpe_ratios['Portfolio'], 4)
 
     # Save the workbook
     wb.save(excel_file)
 
-    print(f"Excel file updated successfully. Added {SYMBOL} with K-means portfolio comparison {portfolio_wins} in column T")
+    logging.info(f"Excel file updated successfully. Added {SYMBOL} with {ANALYSIS_METHOD} portfolio comparison {portfolio_wins} in column T")
     
     return data
 
@@ -1324,83 +1405,72 @@ def main():
     # Load the parameters
     big_point_value, slippage, capital, atr_period = load_parameters()
     
-    print(f"Big Point Value: {big_point_value}")
-    print(f"Slippage: {slippage}")
-    print(f"Capital for Position Sizing: {capital:,}")
-    print(f"ATR Period: {atr_period}")
-
-    # Define the output folder where the plots will be saved
-    output_dir = os.path.join(WORKING_DIR, 'output2', SYMBOL)
-    os.makedirs(output_dir, exist_ok=True)  # Create the directory if it doesn't exist
+    logging.info(f"Big Point Value: {big_point_value}")
+    logging.info(f"Slippage: {slippage}")
+    logging.info(f"Capital for Position Sizing: {capital:,}")
+    logging.info(f"ATR Period: {atr_period}")
 
     # Main execution block
     # Set matplotlib backend explicitly
     matplotlib.use('Agg')  # Use non-interactive backend for headless environments
     
-    print("Starting ATR-based SMA strategy analysis...")
+    logging.info("Starting ATR-based SMA strategy analysis...")
     
     # Run the basic analysis first
     data, best_short, best_long, best_sharpe, best_trades = analyze_sma_results()
     
     if data is None:
-        print("Error: Failed to load or analyze SMA results data.")
+        logging.info("Error: Failed to load or analyze SMA results data.")
         exit(1)
     
-    print("\nProceeding with cluster analysis...")
+    logging.info(f"\nProceeding with {ANALYSIS_METHOD} cluster analysis...")
     
-    # Run the cluster analysis to get medoids
-    X_filtered, medoids, top_medoids, centroids, max_sharpe_point = cluster_analysis()
+    # Run the cluster analysis to get clusters
+    X_filtered, clusters, top_clusters, centroids, max_sharpe_point = cluster_analysis()
     
-    if X_filtered is None or medoids is None:
-        print("Error: Cluster analysis failed.")
+    if X_filtered is None or clusters is None:
+        logging.info(f"Error: {ANALYSIS_METHOD} cluster analysis failed.")
         exit(1)
     
-    print("\nPlotting strategy performance...")
+    logging.info(f"\nPlotting {ANALYSIS_METHOD} strategy performance...")
     
-    # Plot strategy performance with the best parameters AND top medoids using ATR-based position sizing
+    # Plot strategy performance with the best parameters AND top clusters using ATR-based position sizing
     market_data = plot_strategy_performance(
-        best_short, best_long, top_medoids,
+        best_short, best_long, top_clusters,
         big_point_value=big_point_value,
-        slippage=slippage,
-        capital=capital,
-        atr_period=atr_period
+        slippage=slippage
     )
     
-    # Run the bimonthly out-of-sample comparison between best Sharpe and top medoids
-    if top_medoids and len(top_medoids) > 0:
-        print("\nPerforming bimonthly out-of-sample comparison...")
+    # Run the bimonthly out-of-sample comparison between best Sharpe and top clusters
+    if top_clusters and len(top_clusters) > 0:
+        logging.info(f"\nPerforming {ANALYSIS_METHOD} bimonthly out-of-sample comparison...")
         bimonthly_sharpe_df = bimonthly_out_of_sample_comparison(
             market_data,
             best_short,
             best_long,
-            top_medoids,  # Pass the entire top_medoids list
+            top_clusters,  # Pass the entire top_clusters list
             big_point_value=big_point_value,
             slippage=slippage,
-            capital=capital,
-            atr_period=atr_period
         )
     else:
-        print("No top medoids found. Cannot run bimonthly comparison.")
+        logging.info(f"No top {ANALYSIS_METHOD} clusters found. Cannot run bimonthly comparison.")
     
     # After your bimonthly comparison code
-    if top_medoids and len(top_medoids) > 0:
-        print("\nPerforming full out-of-sample performance analysis...")
+    if top_clusters and len(top_clusters) > 0:
+        logging.info(f"\nPerforming {ANALYSIS_METHOD} full out-of-sample performance analysis...")
         full_oos_results = analyze_full_oos_performance(
             market_data,
             best_short,
             best_long,
-            top_medoids,
+            top_clusters,
             big_point_value=big_point_value,
-            slippage=slippage,
-            capital=capital,
-            atr_period=atr_period,
-            min_sharpe=MIN_SHARPE
+            slippage=slippage
         )
     else:
-        print("No top medoids found. Cannot run full OOS analysis.")
+        logging.info(f"No top {ANALYSIS_METHOD} clusters found. Cannot run full OOS analysis.")
     
-    print("\nAnalysis complete! All plots and result files have been saved to the output directory.")
-    print(f"Output directory: {output_dir}")
+    logging.info(f"\nAnalysis complete! All plots and result files have been saved to the output directory.")
+    logging.info(f"Output directory: {OUTPUT_DIR}")
 
 # Call the main function to execute the script
 if __name__ == "__main__":

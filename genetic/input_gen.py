@@ -1,6 +1,6 @@
 # Configuration file for SMA optimization strategy using genetic algorithm
 # Ticker symbol for the asset
-TICKER = 'WBS'
+TICKER = 'AD'
 SHORT_SMA = 34
 LONG_SMA = 40
 
@@ -24,7 +24,7 @@ ATR_PERIOD = 30          # Period for ATR calculation (days)
 TRADING_CAPITAL = 6000   # Capital allocation for position sizing
 
 # Genetic Algorithm parameters
-POPULATION_SIZE = 1000    # Number of individuals in population
+POPULATION_SIZE = 900    # Number of individuals in population
 NUM_GENERATIONS = 10    # Number of generations to evolve
 HALL_OF_FAME_SIZE = 100000   #didelis skaicius kad visus paimtu
 CROSSOVER_PROB = 0.8     # Probability of crossover
