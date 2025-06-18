@@ -17,7 +17,7 @@ SMA_STEP = 2  # Kept for compatibility with original code, not used in GA
 TRAIN_TEST_SPLIT = 0.7
 
 # Results output file
-RESULTS_FILE = 'sma_all_results.txt'
+RESULTS_FILE = 'optimized_strategies.pkl'
 
 # ATR-based position sizing parameters
 ATR_PERIOD = 30          # Period for ATR calculation (days)
@@ -37,3 +37,4 @@ MAX_TRADES = 2000            # Maximum number of trades to consider in clusterin
 MIN_ELEMENTS_PER_CLUSTER = 20  # Minimum elements required for a valid cluster
 DEFAULT_NUM_CLUSTERS = 50     # Default number of clusters if not specified by user
 ELBOW_THRESHOLD = 5  # Threshold for elbow method to determine number of clusters
+MIN_SHARPE = 0.2  # Minimum Sharpe ratio to consider in clustering

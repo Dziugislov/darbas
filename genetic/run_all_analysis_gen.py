@@ -58,6 +58,10 @@ def run_script(script_name):
 
 def main():
     """Main function to run all analysis scripts in sequence"""
+    log_path = "execution.log"
+    if os.path.exists(log_path):
+        os.remove(log_path)
+
     start_time = time.time()
     
     print("\n📊 SMA STRATEGY ANALYSIS PIPELINE 📊")
@@ -83,22 +87,19 @@ def main():
 
         # Step 1: Data Gathering and Optimization
         if not run_script("data_gather_gen.py"):
-            print(f"❌ Data gathering for {symbol} failed. Stopping pipeline for this symbol.")
-            continue
+            raise RuntimeError(f"❌ Data gathering for {symbol} failed. Stopping pipeline.")
         
         print(f"\n✅ Data gathering and optimization for {symbol} completed successfully.")
         
         # Step 2: K-means Clustering Analysis
         if not run_script("data_analysis_gen.py"):
-            print(f"❌ K-means clustering analysis for {symbol} failed. Continuing to next step...\n")
-        else:
-            print(f"\n✅ K-means clustering analysis for {symbol} completed successfully.")
+            raise RuntimeError(f"❌ K-means clustering analysis for {symbol} failed.")
+        print(f"\n✅ K-means clustering analysis for {symbol} completed successfully.")
         
         # Step 3: Hierarchical Clustering Analysis
         if not run_script("data_analysis_hierarchy_gen.py"):
-            print(f"❌ Hierarchical clustering analysis for {symbol} failed.")
-        else:
-            print(f"\n✅ Hierarchical clustering analysis for {symbol} completed successfully.")
+            raise RuntimeError(f"❌ Hierarchical clustering analysis for {symbol} failed.")
+        print(f"\n✅ Hierarchical clustering analysis for {symbol} completed successfully.")
     
     # Calculate total runtime
     total_time = time.time() - start_time

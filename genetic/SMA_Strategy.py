@@ -3,17 +3,7 @@ import numpy as np
 import time
 
 class SMAStrategy:
-    """
-    Vectorized SMA (Simple Moving Average) trading strategy with ATR-based position sizing
-    
-    Features:
-    - Basic SMA crossover entry signals (long when short SMA crosses above long SMA, short when it crosses below)
-    - Pure long/short positions based on crossover direction
-    - Position size based on ATR volatility
-    - Slippage modeling for realistic execution
-    - P&L calculated in absolute dollar terms using big point value
-    - Fully vectorized implementation for efficiency
-    """
+    #Vectorized SMA (Simple Moving Average) trading strategy with ATR-based position sizing
 
     def __init__(self, short_sma, long_sma, big_point_value, slippage=0, capital=6000, atr_period=30):
         """
@@ -294,13 +284,6 @@ class SMAStrategy:
         sharpe_out_sample = returns_out_sample.mean() / returns_out_sample.std() * np.sqrt(
             252) if returns_out_sample.std() > 0 else 0
         sharpe_full = daily_pnl.mean() / daily_pnl.std() * np.sqrt(252) if daily_pnl.std() > 0 else 0
-
-        # Print detailed Sharpe ratio calculation info for verification
-        print("\n--- PERFORMANCE METRICS SHARPE VERIFICATION ---")
-        print(f"In-sample Sharpe = {sharpe_in_sample:.6f}")
-        print(f"Data points used: {len(data)}")
-        print(f"In-sample data points: {len(returns_in_sample)}")
-        print(f"Mean: {returns_in_sample.mean():.6f}, Std: {returns_in_sample.std():.6f}")
 
         # Calculate trade counts using position changes
         position_changes = data[f'Position_Change_{strategy_name}']
