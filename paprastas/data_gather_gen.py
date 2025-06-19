@@ -47,10 +47,14 @@ cache_hit_counter = 0
 # -----------------------------------------------------
 
 def save_plot(plot_name, output_dir) -> None:
-    plt.savefig(os.path.join(output_dir, plot_name))
+    path = os.path.join(output_dir, plot_name)
+    plt.savefig(path)
     if IN_COLAB:
         plt.show()
+        from IPython.display import Image, display
+        display(Image(filename=path))
     plt.close()
+
 
 
 def save_parameters(
