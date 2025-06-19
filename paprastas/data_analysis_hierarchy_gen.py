@@ -50,66 +50,6 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 EXCEL_FILE_PATH = os.path.join(os.getcwd(), 'Results.xlsx')
 ANALYSIS_METHOD = "Hierarchical"  # Set to "Kmeans" or "Hierarchical" depending on the analysis type
 
-def calculate_elbow_curve_hierarchical(X_scaled):
-    """
-    Calculate the elbow curve for KMeans clustering
-    
-    Parameters:
-    X_scaled: numpy array - Scaled data points
-    max_clusters: int - Maximum number of clusters to try
-    
-    Returns:
-    distortions: list - Distortion values for each k
-    k_values: list - K values used
-    optimal_k: int - Optimal number of clusters based on elbow method
-    """
-    logging.info("\nCalculating elbow curve...")
-    distortions = []
-    k_values = range(1, DEFAULT_NUM_CLUSTERS + 1)
-    
-    for k in k_values:
-        if k == 1:
-            # For k=1, distortion is just the sum of squared distances to mean
-            distortion = np.sum((X_scaled - np.mean(X_scaled, axis=0)) ** 2)
-            distortions.append(distortion)
-            continue
-            
-        clustering = AgglomerativeClustering(n_clusters=k)
-        clustering.fit(X_scaled)
-        
-        # Calculate distortion for current clustering
-        centroids = np.array([X_scaled[clustering.labels_ == i].mean(axis=0) for i in range(k)])
-        distortion = np.sum([np.sum((X_scaled[clustering.labels_ == i] - centroids[i]) ** 2) 
-                           for i in range(k)])
-        distortions.append(distortion)
-    
-    # Calculate the percentage changes
-    pct_changes = np.diff(distortions) / np.array(distortions)[:-1] * 100
-    
-    # Find optimal k using the threshold method
-    optimal_k = 1
-    for i, pct_change in enumerate(pct_changes):
-        if abs(pct_change) < ELBOW_THRESHOLD:
-            optimal_k = i + 1  # +1 because we start from k=1
-            break
-    
-    # Plot the elbow curve
-    plt.figure(figsize=(10, 6))
-    plt.plot(k_values, distortions, 'bo-')
-    plt.axvline(x=optimal_k, color='r', linestyle='--', 
-                label=f'Optimal k={optimal_k}\n(threshold={ELBOW_THRESHOLD}%)')
-    plt.xlabel('Number of Clusters (k)')
-    plt.ylabel('Distortion')
-    plt.title(f'{SYMBOL} Hierarchical Elbow Method for Optimal k')
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    save_plot(f'{SYMBOL}_Hierarchical_Elbow_Curve.png', OUTPUT_DIR)
-    
-    logging.info(f"Optimal number of clusters from elbow method: {optimal_k}")
-    return distortions, k_values, optimal_k
-
-
 def compute_hierarchical_clusters(X, labels, valid_clusters):
     """
     Compute clusters for each valid cluster from hierarchical clustering
@@ -305,23 +245,19 @@ def hierarchical_cluster_analysis(file_path='optimized_strategies.pkl'):
     Z = create_dendrogram(X_scaled, method=linkage_method,
                         figsize=(12, 8))
 
-    # Calculate optimal number of clusters using elbow method
-    logging.info("\nDetermining optimal number of clusters using elbow method...")
-    _, _, k = calculate_elbow_curve_hierarchical(X_scaled)
-    logging.info(f"Using {k} clusters based on elbow method (threshold={ELBOW_THRESHOLD}%)")
 
     # Apply hierarchical clustering
-    logging.info(f"Performing hierarchical clustering with {k} clusters using {linkage_method} linkage...")
+    logging.info(f"Performing hierarchical clustering with {DEFAULT_NUM_CLUSTERS} clusters using {linkage_method} linkage...")
     if linkage_method == 'ward':
         # Ward linkage requires euclidean distance
         hierarchical = AgglomerativeClustering(
-            n_clusters=k,
+            n_clusters=DEFAULT_NUM_CLUSTERS,
             linkage=linkage_method
         )
     else:
         # For other linkage methods, we can specify affinity
         hierarchical = AgglomerativeClustering(
-            n_clusters=k,
+            n_clusters=DEFAULT_NUM_CLUSTERS,
             affinity='euclidean',
             linkage=linkage_method
         )

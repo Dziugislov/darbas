@@ -606,14 +606,6 @@ def main():
         data_for_evaluation = data.iloc[original_start_idx:].copy()
     else:
         raise ValueError("original_start_idx is None, cannot proceed with evaluation")
-    # Save best strategy PnL
-    col_name = f"SMA_{SYMBOL}_best_{best_short_sma}/{best_long_sma}"
-    trimmed = data_for_evaluation.copy()
-    pnl_df = pd.DataFrame({col_name: trimmed["Daily_PnL_Strategy"]})
-
-    pnl_df.index = pnl_df.index.normalize()
-
-    logging.info(f" Saved PnL for {col_name} to pnl_temp.pkl")
 
 
     visualize_results(

@@ -454,7 +454,7 @@ def create_cluster_visualization(X_filtered_full, clusters, top_clusters, centro
 
     # Add legend
     plt.legend(handles=[max_sharpe_handle, cluster_handle, top_cluster_handle, centroid_handle],
-            loc='best')
+            loc="lower right")
 
     # Set labels and title
     plt.title(f'{SYMBOL} SMA Parameter Clustering Analysis (Sharpe Ratio)', fontsize=14)

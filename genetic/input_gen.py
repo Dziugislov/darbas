@@ -1,6 +1,6 @@
 # Configuration file for SMA optimization strategy using genetic algorithm
 # Ticker symbol for the asset
-TICKER = 'AD'
+TICKER = 'WBS'
 SHORT_SMA = 34
 LONG_SMA = 40
 
