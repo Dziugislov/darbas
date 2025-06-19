@@ -207,31 +207,6 @@ class SMAStrategy:
             else:
                 print("Cannot verify Sharpe (std = 0)")
 
-        sorted_results = sorted(all_results, key=lambda x: x[3], reverse=True)
-        top_n = max(1, int(len(sorted_results) * 0.2))
-        top_strategies = sorted_results[:top_n]
-
-        pnl_dict = {}
-        for short_sma, long_sma, _, _ in top_strategies:
-            sim_data = sim_data_cache[(short_sma, long_sma)]
-            pnl_col = sim_data.filter(like="Daily_PnL").columns[0]
-            pnl_series = sim_data.iloc[warm_up_idx:][pnl_col].copy()
-            pnl_series.index = pnl_series.index.normalize()
-            col_name = f"SMA_{ticker}_{short_sma}/{long_sma}"
-            pnl_dict[col_name] = pnl_series
-
-        top20_df = pd.DataFrame(pnl_dict)
-        top20_df.index = top20_df.index.normalize()
-
-        if os.path.exists("pnl_temp.pkl"):
-            with open("pnl_temp.pkl", "rb") as f:
-                existing = pickle.load(f)
-                if isinstance(existing, pd.DataFrame):
-                    top20_df = existing.join(top20_df, how="outer")
-
-        with open("pnl_temp.pkl", "wb") as f:
-            pickle.dump(top20_df, f)
-
         return best_sma, best_sharpe, best_trades, all_results
 
     def calculate_performance_metrics(self, data, strategy_name="Strategy", train_test_split=0.7):

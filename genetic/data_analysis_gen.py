@@ -667,43 +667,6 @@ def plot_strategy_performance(short_sma, long_sma, top_clusters, big_point_value
     else:
         raise ValueError("original_start_idx is None, cannot proceed with evaluation.")
     
-    pnl_dict = {}
-
-    prefix = f"SMA_Kmeans_{TICKER}_Kmeans" if ANALYSIS_METHOD == "Kmeans" else f"SMA_Hierarchy_{TICKER}"
-
-    for i, (name, params) in enumerate([(f'cluster {i}', strategies[f'cluster {i}']) for i in range(1,4)]):
-        short_sma = int(params['short_sma'])
-        long_sma = int(params['long_sma'])
-        col_name = f"{prefix}_{i+1}_{short_sma}/{long_sma}"
-        pnl_series = data_for_evaluation[f"Daily_PnL_{name}"].copy()
-        pnl_series.index = pnl_series.index.normalize()
-        pnl_dict[col_name] = pnl_series
-
-    pnl_df = pd.DataFrame(pnl_dict)
-    pnl_df.index = pnl_df.index.normalize()
-
-    if os.path.exists("pnl_temp.pkl"):
-        with open("pnl_temp.pkl", "rb") as f:
-            existing = pickle.load(f)
-
-        if isinstance(existing, pd.DataFrame):
-            for col in pnl_df.columns:
-                if col in existing.columns:
-                    logging.info(f"Overwriting existing column '{col}'.")
-                existing[col] = pnl_df[col]
-
-            merged_df = existing
-        else:
-            merged_df = pnl_df
-    else:
-        merged_df = pnl_df
-
-    with open("pnl_temp.pkl", "wb") as f:
-        pickle.dump(merged_df, f)
-
-
-
-
     
     # Calculate split index for in-sample/out-of-sample
     split_index = int(len(data_for_evaluation) * TRAIN_TEST_SPLIT)

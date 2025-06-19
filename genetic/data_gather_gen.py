@@ -749,80 +749,7 @@ def main():
     logging.info(
         f"Saved GA optimization results to {RESULTS_FILE} (sorted by short_SMA, {len(sorted_results)} unique strategies)"
     )
-    
-    # ------------------------------------------------------------------
-    # Aggregate PnL series for the top 20% strategies by Sharpe ratio
-    # (mimicking the behavior of SMAStrategy.optimize())
-    # ------------------------------------------------------------------
-    try:
-        # Sort by Sharpe (index 2) in descending order
-        sorted_by_sharpe = sorted(unique_results, key=lambda x: x[2], reverse=True)
-        top_n = max(1, int(len(sorted_by_sharpe) * 0.2))
-        top_strategies = sorted_by_sharpe[:top_n]
 
-        pnl_dict = {}
-        for short_sma, long_sma, sharpe_ratio, _ in top_strategies:
-            key = (short_sma, long_sma)
-            eval_df = evaluation_data_cache.get(key)
-            if eval_df is None:
-                continue  # Skip if we somehow did not cache this combo
-
-            # Extract the daily PnL series and normalise the index to date only
-            pnl_series = eval_df["Daily_PnL_Strategy"].copy()
-            pnl_series.index = pnl_series.index.normalize()
-            col_name = f"SMA_{SYMBOL}_{short_sma}/{long_sma}"
-            pnl_dict[col_name] = pnl_series
-
-        if pnl_dict:
-            top_df = pd.DataFrame(pnl_dict)
-            top_df.index = top_df.index.normalize()
-
-            # Merge with existing file if present
-            if os.path.exists("pnl_temp.pkl"):
-                with open("pnl_temp.pkl", "rb") as f:
-                    existing_df = pickle.load(f)
-                    if isinstance(existing_df, pd.DataFrame):
-                        top_df = existing_df.join(top_df, how="outer")
-
-            with open("pnl_temp.pkl", "wb") as f:
-                pickle.dump(top_df, f)
-
-            logging.info(
-                f"Saved PnL series of top {top_n} strategies (top 20%) to pnl_temp.pkl"
-            )
-        else:
-            logging.info("No PnL data collected for top strategies; skipping pnl_temp.pkl update.")
-    except Exception as e:
-        logging.error(f"Failed to save top strategy PnL series: {e}")
-
-    try:
-        best_col_name = f"SMA_{SYMBOL}_best_{best_short_sma}/{best_long_sma}"
-        best_series = data_for_evaluation["Daily_PnL_Strategy"].copy()
-        best_series.index = best_series.index.normalize()
-        best_df = pd.DataFrame({best_col_name: best_series})
-
-        if os.path.exists("pnl_temp.pkl"):
-            with open("pnl_temp.pkl", "rb") as f:
-                existing_df = pickle.load(f)
-            if isinstance(existing_df, pd.DataFrame):
-                if best_col_name in existing_df.columns:
-                    logging.info(f"Overwriting existing best strategy: {best_col_name}")
-                    del existing_df[best_col_name]
-                existing_df[best_col_name] = best_df[best_col_name]
-                best_df = existing_df
-
-        with open("pnl_temp.pkl", "wb") as f:
-            pickle.dump(best_df, f)
-
-        logging.info(f"✅ Best strategy saved as '{best_col_name}' to pnl_temp.pkl")
-    except Exception as e:
-        logging.error(f"❌ Failed to save best strategy PnL: {e}")
-
-
-    # Apply the best parameters found to the full dataset
-    strategy.short_sma = best_short_sma
-    strategy.long_sma = best_long_sma
-    
     logging.info("\nApplying best strategy parameters...")
     data = strategy.apply_strategy(data.copy())
     logging.info("Strategy application completed.")
@@ -834,6 +761,7 @@ def main():
         logging.info(f"Original data length: {len(data)}, Evaluation data length: {len(data_for_evaluation)}")
     else:
         raise ValueError("original_start_idx is None, cannot proceed with evaluation and visualization.")
+
 
     
     # Generate and save strategy visualization using the helper

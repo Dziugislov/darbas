@@ -40,60 +40,6 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 EXCEL_FILE_PATH = os.path.join(os.getcwd(), 'Results.xlsx')
 ANALYSIS_METHOD = "Kmeans"  # Set to "Kmeans" or "Hierarchical" depending on the analysis type
 
-def calculate_elbow_curve(X_scaled):
-    """
-    Calculate the elbow curve for KMeans clustering
-    
-    Parameters:
-    X_scaled: numpy array - Scaled data points
-    max_clusters: int - Maximum number of clusters to try
-    
-    Returns:
-    distortions: list - Distortion values for each k
-    k_values: list - K values used
-    optimal_k: int - Optimal number of clusters based on elbow method
-    """
-    logging.info(f"\nCalculating {ANALYSIS_METHOD} elbow curve...")
-    distortions = []
-    k_values = range(1, DEFAULT_NUM_CLUSTERS + 1)
-    
-    for k in k_values:
-        if k == 1:
-            # For k=1, distortion is just the sum of squared distances to mean
-            distortion = np.sum((X_scaled - np.mean(X_scaled, axis=0)) ** 2)
-            distortions.append(distortion)
-            continue
-            
-        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-        kmeans.fit(X_scaled)
-        distortions.append(kmeans.inertia_)
-    
-    # Calculate the percentage changes
-    pct_changes = np.diff(distortions) / np.array(distortions)[:-1] * 100
-
-    # Find optimal k using the threshold method
-    optimal_k = 1
-    for i, pct_change in enumerate(pct_changes):
-        if abs(pct_change) < ELBOW_THRESHOLD:
-            optimal_k = i + 1  # +1 because we start from k=1
-            break
-    
-    # Plot the elbow curve
-    plt.figure(figsize=(10, 6))
-    plt.plot(k_values, distortions, 'bo-')
-    plt.axvline(x=optimal_k, color='r', linestyle='--', 
-                label=f'Optimal k={optimal_k}\n(threshold={ELBOW_THRESHOLD}%)')
-    plt.xlabel('Number of Clusters (k)')
-    plt.ylabel('Distortion')
-    plt.title(f'{SYMBOL} {ANALYSIS_METHOD} Elbow Method for Optimal k')
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    save_plot(f'{SYMBOL}_KMeans_Elbow_Curve.png', OUTPUT_DIR)
-    
-    logging.info(f"Optimal number of {ANALYSIS_METHOD} clusters from elbow method: {optimal_k}")
-    return distortions, k_values, optimal_k
-
 def load_parameters():
     with open("parameters.json", "r") as file:
         parameters = json.load(file)
@@ -214,12 +160,10 @@ def cluster_analysis(file_path='optimized_strategies.pkl'):
 
     # Determine number of clusters using elbow method
     logging.info(f"\nDetermining optimal number of {ANALYSIS_METHOD} clusters using elbow method...")
-    _, _, k = calculate_elbow_curve(X_scaled)
-    logging.info(f"Using {k} {ANALYSIS_METHOD} clusters based on elbow method (threshold={ELBOW_THRESHOLD})")
 
     # Apply KMeans clustering
-    logging.info(f"Performing {ANALYSIS_METHOD} clustering with k={k}...")
-    kmeans = KMeans(n_clusters=k, random_state=RANDOM_SEED, n_init=10)
+    logging.info(f"Performing {ANALYSIS_METHOD} clustering with k={DEFAULT_NUM_CLUSTERS}...")
+    kmeans = KMeans(n_clusters=DEFAULT_NUM_CLUSTERS, random_state=RANDOM_SEED, n_init=10)
     kmeans.fit(X_scaled)
 
     # Get cluster labels
@@ -666,41 +610,8 @@ def plot_strategy_performance(short_sma, long_sma, top_clusters, big_point_value
         logging.info(f"Trimmed warm-up period. Evaluation data length: {len(data_for_evaluation)}")
     else:
         raise ValueError("original_start_idx is None, cannot proceed with evaluation.")
-    
-    pnl_dict = {}
-
-    prefix = f"SMA_{TICKER}_Kmeans" if ANALYSIS_METHOD == "Kmeans" else f"SMA_{TICKER}_Hierarchy"
-
-    for i, (name, params) in enumerate([(f'cluster {i}', strategies[f'cluster {i}']) for i in range(1,4)]):
-        short_sma = int(params['short_sma'])
-        long_sma = int(params['long_sma'])
-        col_name = f"{prefix}_{i+1}_{short_sma}/{long_sma}"
-        pnl_series = data_for_evaluation[f"Daily_PnL_{name}"].copy()
-        pnl_series.index = pnl_series.index.normalize()
-        pnl_dict[col_name] = pnl_series
-
-    pnl_df = pd.DataFrame(pnl_dict)
-    pnl_df.index = pnl_df.index.normalize()
-
-    if os.path.exists("pnl_temp.pkl"):
-        with open("pnl_temp.pkl", "rb") as f:
-            existing = pickle.load(f)
-
-        if isinstance(existing, pd.DataFrame):
-            for col in pnl_df.columns:
-                if col in existing.columns:
-                    logging.info(f"Overwriting existing column '{col}'.")
-                    del existing[col]
-                existing[col] = pnl_df[col]
-
-            pnl_df = existing
-
-    with open("pnl_temp.pkl", "wb") as f:
-        pickle.dump(pnl_df, f)
 
 
-
-    
     # Calculate split index for in-sample/out-of-sample
     split_index = int(len(data_for_evaluation) * TRAIN_TEST_SPLIT)
     split_date = data_for_evaluation.index[split_index]

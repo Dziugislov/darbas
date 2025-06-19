@@ -609,24 +609,6 @@ def main():
 
     pnl_df.index = pnl_df.index.normalize()
 
-    if os.path.exists("pnl_temp.pkl"):
-        with open("pnl_temp.pkl", "rb") as f:
-            existing = pickle.load(f)
-            if isinstance(existing, pd.DataFrame):
-                for col in pnl_df.columns:
-                    # ✅ Always overwrite best Sharpe column
-                    existing[col] = pnl_df[col]
-                pnl_df = existing
-
-    with open("pnl_temp.pkl", "wb") as f:
-        pickle.dump(pnl_df, f)
-
-
-
-
-
-
-
     logging.info(f" Saved PnL for {col_name} to pnl_temp.pkl")
 
 
