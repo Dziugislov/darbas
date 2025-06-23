@@ -121,67 +121,51 @@ def find_futures_file(symbol: str, data_dir: str) -> str:
 # -------------------------------------------------------------------------
 
 def evaluate_individual(individual):
-    """Evaluate a (short_sma, long_sma) individual and return a Sharpe-ratio
-    fitness tuple. Uses several globals that *main()* sets up."""
-    global evaluation_counter, cache_hit_counter, data, big_point_value, slippage, original_start_idx, evaluation_data_cache
+    global evaluated_combinations, cache_hit_counter, data, big_point_value, slippage, original_start_idx, evaluation_data_cache
 
     short_sma, long_sma = individual
     key = (short_sma, long_sma)
 
-    # Memoisation shortcut
+    # 1) Memoization
     if key in evaluated_combinations:
         cache_hit_counter += 1
         return evaluated_combinations[key]
 
-    evaluation_counter += 1
-
-    # Invalid SMA ordering penalty
+    # 2) Invalid ordering
     if short_sma >= long_sma:
         evaluated_combinations[key] = (-999999.0, 0)
         return -999999.0, 0
 
-    ga_strategy = SMAStrategy(
-        short_sma=short_sma,
-        long_sma=long_sma,
-        big_point_value=big_point_value,
-        slippage=slippage,
-        capital=TRADING_CAPITAL,
-        atr_period=ATR_PERIOD,
-    )
+    # 3) Run the strategy
+    ga = SMAStrategy(short_sma, long_sma, big_point_value, slippage, TRADING_CAPITAL, ATR_PERIOD)
+    temp = ga.apply_strategy(data.copy())
+    eval_df = temp.iloc[original_start_idx:].copy()
+    split = int(len(eval_df) * TRAIN_TEST_SPLIT)
+    train = eval_df.iloc[:split]
 
-    temp_data = data.copy()
-    temp_data = ga_strategy.apply_strategy(temp_data)
-    
-
-    eval_data = (
-        temp_data.iloc[original_start_idx:].copy()
-        if original_start_idx is not None
-        else (_ for _ in ()).throw(ValueError("original_start_idx is None"))
-    )
-
-    split_idx = int(len(eval_data) * TRAIN_TEST_SPLIT)
-    train_data = eval_data.iloc[:split_idx]
-
-    if "Daily_PnL_Strategy" in train_data.columns and len(train_data) > 0:
-        daily_returns = train_data["Daily_PnL_Strategy"]
-        if daily_returns.sum() != 0 and daily_returns.std() != 0:
-            sharpe = (daily_returns.mean() / daily_returns.std()) * np.sqrt(252)
-            trade_count = int(train_data["Position_Change_Strategy"].sum())
-            if trade_count < MIN_TRADES or trade_count > MAX_TRADES:
-                result = (-999999.0, trade_count)
-            else:
-                result = (sharpe, trade_count)
+    # 4) Compute result **always** (no missing branch)
+    if "Daily_PnL_Strategy" in train.columns and len(train) > 0:
+        dr = train["Daily_PnL_Strategy"]
+        if dr.sum() != 0 and dr.std() != 0:
+            sharpe = dr.mean() / dr.std() * np.sqrt(252)
+            trades = int(train["Position_Change_Strategy"].sum())
+            result = (sharpe if MIN_TRADES <= trades <= MAX_TRADES else -999999.0, trades)
         else:
             result = (-999999.0, 0)
     else:
         result = (-999999.0, 0)
 
-    # Cache the evaluated DataFrame for later aggregation if the result is not penalized
+    # 5) Cache its PnL *series* if it wasn’t penalized
     if result[0] != -999999.0:
-        evaluation_data_cache[key] = eval_data
+        pnl = eval_df["Daily_PnL_Strategy"].copy()
+        pnl.index = pnl.index.normalize()
+        pnl.name = f"SMA_{TICKER}_{short_sma}/{long_sma}"
+        evaluation_data_cache[key] = pnl
 
+    # 6) Store & return
     evaluated_combinations[key] = result
     return result
+
 
 
 def custom_mutation(individual, indpb):
@@ -515,6 +499,8 @@ def main():
     # Setup paths using relative directories
     WORKING_DIR = "."  # Current directory
     DATA_DIR = os.path.join(WORKING_DIR, "data")
+    pnl_file = os.path.join(WORKING_DIR, "master_daily_pnl.pkl")
+    top5_file   = os.path.join(WORKING_DIR, "top5_strategies_daily_pnl.pkl") 
 
     SYMBOL = TICKER
 
@@ -663,9 +649,15 @@ def main():
     optimization_end_time = time.time()
     optimization_time = optimization_end_time - optimization_start_time
     logging.info(f"\nGenetic algorithm optimization completed in {optimization_time:.2f} seconds ({optimization_time/60:.2f} minutes)")
-    
     logging.info(f"Best parameters found: Short SMA = {best_short_sma}, Long SMA = {best_long_sma}")
     logging.info(f"Best fitness (Sharpe ratio): {best_individual.fitness.values[0]:.6f}")
+
+
+
+
+
+
+
     
     logging.info("\n--- TOP GENETIC ALGORITHM RESULTS ---")
     for idx, individual in enumerate(hall_of_fame):
@@ -749,6 +741,97 @@ def main():
     logging.info(
         f"Saved GA optimization results to {RESULTS_FILE} (sorted by short_SMA, {len(sorted_results)} unique strategies)"
     )
+        # ————————————————————————— Top 20% PnL —————————————————————————
+    # pick top 20% by Sharpe
+    n_top = int(len(results_df) * 0.2)
+    top_df = results_df.nlargest(n_top, "sharpe_ratio")
+    pnl_cache = evaluation_data_cache
+
+     # ————————————————————————— FILTER-OUT STEP —————————————————————————
+    # Load the raw optimization table
+    raw = pd.read_pickle(RESULTS_FILE.replace('.csv', '.pkl'))
+
+    # Define your filter-out mask.  Example: 
+    #   drop anything where short >= long OR trades outside [MIN_TRADES, MAX_TRADES]
+    bad = raw[
+        (raw.short_SMA >= raw.long_SMA) |
+        (raw.trades  < MIN_TRADES)      |
+        (raw.trades  > MAX_TRADES)
+    ][["short_SMA", "long_SMA"]]
+
+    # Turn it into a set of tuples for fast lookup
+    bad_set = set(zip(bad.short_SMA, bad.long_SMA))
+
+    # Now filter your top_df to remove those pairs
+    keep_mask = [(row.short_SMA, row.long_SMA) not in bad_set
+                 for _, row in top_df.iterrows()]
+    top_df = top_df.loc[keep_mask]
+    logging.info(f"Filtered out {len(bad_set)} bad combos; keeping {len(top_df)} of top {n_top}")
+
+    # build wide PnL DataFrame from the cache returned by optimize()
+    pnl_df = pd.concat(
+        [pnl_cache[(row.short_SMA, row.long_SMA)]
+         for _, row in top_df.iterrows()],
+        axis=1
+    )
+    # normalize index so every timestamp is set to midnight
+    pnl_df.index = pnl_df.index.normalize()
+
+    # rename columns to reflect daily-PnL
+    pnl_df.columns = [
+        f"SMA_{SYMBOL}_TOP20_{s}/{l}"
+        for s, l in top_df[["short_SMA", "long_SMA"]].itertuples(False, None)
+    ]
+
+
+    # ————————————————————————— Top 5 PnL —————————————————————————
+    # pick top 5 by Sharpe
+    top5_n = 5
+    top5_df = results_df.nlargest(top5_n, "sharpe_ratio")
+
+    # build wide PnL DataFrame for just those 5
+    pnl_top5 = pd.concat(
+        [pnl_cache[(row.short_SMA, row.long_SMA)]
+         for _, row in top5_df.iterrows()],
+        axis=1
+    )
+    # normalize index for the top-5 series as well
+    pnl_top5.index = pnl_top5.index.normalize()
+
+    # rename columns
+    pnl_top5.columns = [
+        f"SMA_{SYMBOL}_TOP5_{s}/{l}"
+        for s, l in top5_df[["short_SMA", "long_SMA"]].itertuples(False, None)
+    ]
+
+    # ————————————————————————— Save Files —————————————————————————
+    logging.info(f"Master file path: {pnl_file!r}, exists? {os.path.exists(pnl_file)}")
+
+    # 1) Append the **Top-20%** PnL (pnl_df) to master_daily_pnl.pkl
+    if os.path.exists(pnl_file):
+        master = pd.read_pickle(pnl_file)
+        logging.info(f"Loaded existing master, columns before append: {master.columns.tolist()}")
+    else:
+        master = pd.DataFrame(index=pnl_df.index)
+        logging.info("No existing master found, starting fresh")
+    master = pd.concat([master, pnl_df], axis=1)
+    master.to_pickle(pnl_file)
+    logging.info(f"Wrote TOP20 master to {pnl_file!r}")
+
+    # ————————————————————————— Save Top-5 PnL —————————————————————————
+    if os.path.exists(top5_file):
+        top5_master = pd.read_pickle(top5_file)
+    else:
+        top5_master = pd.DataFrame(index=pnl_top5.index)
+        logging.info("No existing TOP5 master found, starting fresh")
+
+    # Append this run’s Top-5 series exactly once
+    top5_master = pd.concat([top5_master, pnl_top5], axis=1)
+
+    # Persist
+    top5_master.to_pickle(top5_file)
+    logging.info(f"Wrote TOP5 master to {top5_file!r}")
+
 
     logging.info("\nApplying best strategy parameters...")
     data = strategy.apply_strategy(data.copy())

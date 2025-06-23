@@ -519,6 +519,8 @@ def main():
     # Setup paths using relative directories
     WORKING_DIR = "."  # Current directory
     DATA_DIR = os.path.join(WORKING_DIR, "data")
+    pnl_file = os.path.join(WORKING_DIR, "master_daily_pnl.pkl")
+    top5_file   = os.path.join(WORKING_DIR, "top5_strategies_daily_pnl.pkl")    
 
     SYMBOL = TICKER
 
@@ -569,7 +571,7 @@ def main():
     sma_range = list(range(SMA_MIN, SMA_MAX + 1, SMA_STEP))
 
     # Run optimization
-    best_sma, best_sharpe, best_trades, all_results = strategy.optimize(
+    best_sma, best_sharpe, best_trades, all_results, pnl_cache = strategy.optimize(
         data.copy(),
         sma_range=sma_range,
         train_test_split=TRAIN_TEST_SPLIT,
@@ -594,6 +596,106 @@ def main():
     )
     results_df.to_pickle(RESULTS_FILE.replace('.csv', '.pkl'))
     logging.info(f"Saved optimization results to {RESULTS_FILE}")
+
+    # ————————————————————————— Top 20% PnL —————————————————————————
+    # pick top 20% by Sharpe
+    n_top = int(len(results_df) * 0.2)
+    top_df = results_df.nlargest(n_top, "sharpe_ratio")
+
+     # ————————————————————————— FILTER-OUT STEP —————————————————————————
+    # Load the raw optimization table
+    raw = pd.read_pickle(RESULTS_FILE.replace('.csv', '.pkl'))
+
+    # Define your filter-out mask.  Example: 
+    #   drop anything where short >= long OR trades outside [MIN_TRADES, MAX_TRADES]
+    bad = raw[
+        (raw.short_SMA >= raw.long_SMA) |
+        (raw.trades  < MIN_TRADES)      |
+        (raw.trades  > MAX_TRADES)
+    ][["short_SMA", "long_SMA"]]
+
+    # Turn it into a set of tuples for fast lookup
+    bad_set = set(zip(bad.short_SMA, bad.long_SMA))
+
+    # Now filter your top_df to remove those pairs
+    keep_mask = [(row.short_SMA, row.long_SMA) not in bad_set
+                 for _, row in top_df.iterrows()]
+    top_df = top_df.loc[keep_mask]
+    logging.info(f"Filtered out {len(bad_set)} bad combos; keeping {len(top_df)} of top {n_top}")
+
+    # build wide PnL DataFrame from the cache returned by optimize()
+    pnl_df = pd.concat(
+        [pnl_cache[(row.short_SMA, row.long_SMA)]
+         for _, row in top_df.iterrows()],
+        axis=1
+    )
+    # normalize index so every timestamp is set to midnight
+    pnl_df.index = pnl_df.index.normalize()
+
+    # rename columns to reflect daily-PnL
+    pnl_df.columns = [
+        f"SMA_{SYMBOL}_TOP20_{s}/{l}"
+        for s, l in top_df[["short_SMA", "long_SMA"]].itertuples(False, None)
+    ]
+
+
+    # ————————————————————————— Top 5 PnL —————————————————————————
+    # pick top 5 by Sharpe
+    top5_n = 5
+    top5_df = results_df.nlargest(top5_n, "sharpe_ratio")
+
+    # build wide PnL DataFrame for just those 5
+    pnl_top5 = pd.concat(
+        [pnl_cache[(row.short_SMA, row.long_SMA)]
+         for _, row in top5_df.iterrows()],
+        axis=1
+    )
+    # normalize index for the top-5 series as well
+    pnl_top5.index = pnl_top5.index.normalize()
+
+    # rename columns
+    pnl_top5.columns = [
+        f"SMA_{SYMBOL}_TOP5_{s}/{l}"
+        for s, l in top5_df[["short_SMA", "long_SMA"]].itertuples(False, None)
+    ]
+
+    # ————————————————————————— Save Files —————————————————————————
+
+    # 1) Save or update master file with top-20% daily PnL (one-shot concat)
+    # ————————————————————————— Diagnostics & Save —————————————————————————
+    logging.info(f"Master file path: {pnl_file!r}, exists? {os.path.exists(pnl_file)}")
+
+    if os.path.exists(pnl_file):
+        master = pd.read_pickle(pnl_file)
+        logging.info(f"  ► Loaded existing master, columns before append: {master.columns.tolist()}")
+    else:
+        master = pd.DataFrame(index=pnl_df.index)
+        logging.info("  ► No existing master found, starting fresh")
+
+    # Append the new symbol's columns
+    master = pd.concat([master, pnl_df], axis=1)
+
+    # Persist
+    master.to_pickle(pnl_file)
+    logging.info(f"  ► Wrote master to {pnl_file!r}")
+
+
+    # ————————————————————————— Save top‐5 across tickers —————————————————————————
+    if os.path.exists(top5_file):
+        top5_master = pd.read_pickle(top5_file)
+    else:
+        top5_master = pd.DataFrame(index=pnl_top5.index)
+        logging.info("No existing top‐5 master found, starting fresh")
+
+    # Append the new ticker’s top‐5 daily‐PnL
+    top5_master = pd.concat([top5_master, pnl_top5], axis=1)
+
+    # Persist
+    top5_master.to_pickle(top5_file)
+    logging.info(f"Wrote top‐5 master to {top5_file!r}")
+
+
+    
 
     # ------------------------------------------------------------------
     # Apply best parameters and visualize

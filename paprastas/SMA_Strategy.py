@@ -169,7 +169,11 @@ class SMAStrategy:
                     with open(results_file, 'a') as f:
                         f.write(f"{short_sma},{long_sma},{trade_count},{sharpe_ratio:.6f}\n")
 
-                sim_data_cache[(short_sma, long_sma)] = sim_data
+                pnl_col = sim_data_eval.filter(like="Daily_PnL").columns[0]
+                pnl_series = sim_data_eval[pnl_col].copy()
+                pnl_series.name = f"SMA_{ticker}_{short_sma}/{long_sma}"
+                sim_data_cache[(short_sma, long_sma)] = pnl_series
+
                 all_results.append((short_sma, long_sma, trade_count, sharpe_ratio))
 
                 if sharpe_ratio > best_sharpe:
@@ -192,6 +196,7 @@ class SMAStrategy:
                     print(
                         f"Progress: {completed}/{total_combinations} simulations completed ({(completed / total_combinations * 100):.1f}%)"
                         f" - Avg sim time: {avg_sim_time:.4f}s - Est. remaining: {est_remaining:.1f}s")
+        
 
         if best_sim_data is not None:
             print("\n--- OPTIMIZATION SHARPE VERIFICATION ---")
@@ -207,7 +212,8 @@ class SMAStrategy:
             else:
                 print("Cannot verify Sharpe (std = 0)")
 
-        return best_sma, best_sharpe, best_trades, all_results
+        return best_sma, best_sharpe, best_trades, all_results, sim_data_cache
+
 
     def calculate_performance_metrics(self, data, strategy_name="Strategy", train_test_split=0.7):
         """

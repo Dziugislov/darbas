@@ -759,7 +759,56 @@ def plot_strategy_performance(short_sma, long_sma, top_clusters, big_point_value
     # Save the plot according to the chosen clustering method
     if ANALYSIS_METHOD.lower() == "kmeans":
         save_plot(f'{SYMBOL}_KMeans_Multiple_Strategy_Plots.png', OUTPUT_DIR)
+                # ————————————————————————— SAVE TOP-5 KMEANS DAILY-PnL —————————————————————————
+        kmeans_top5_file = os.path.join(WORKING_DIR, "top5_kmeans_strategies_daily_pnl.pkl")
+
+        # auto-detect your PnL columns for the top 5 clusters
+        pnl_cols = [c for c in data_for_evaluation.columns if c.startswith("Daily_PnL_cluster")]
+        pnl_cols = sorted(pnl_cols)[:5]  # first five in alphabetical order
+
+        pnl_top5 = data_for_evaluation[pnl_cols].copy()
+        pnl_top5.index = pnl_top5.index.normalize()
+
+        # rename each to include cluster#, symbol, and its (sma_short/sma_long)
+        new_names = {}
+        for i, col in enumerate(pnl_cols, start=1):
+            p = strategies[f"cluster {i}"]
+            new_names[col] = f"SMA_{SYMBOL}_KMeans_Cluster{i}_{p['short_sma']}/{p['long_sma']}"
+        pnl_top5.rename(columns=new_names, inplace=True)
+
+        # load or init master
+        if os.path.exists(kmeans_top5_file):
+            master_k = pd.read_pickle(kmeans_top5_file)
+        else:
+            master_k = pd.DataFrame(index=pnl_top5.index)
+
+        master_k = pd.concat([master_k, pnl_top5], axis=1)
+        master_k.to_pickle(kmeans_top5_file)
+        logging.info(f"Updated KMeans top-5 daily-PnL file: {kmeans_top5_file}")
     else:  # Assume hierarchical for any non-KMeans value
+                # ————————————————————————— SAVE TOP-5 HIERARCHY DAILY-PnL —————————————————————————
+        hierarchy_top5_file = os.path.join(WORKING_DIR, "top5_hierarchy_strategies_daily_pnl.pkl")
+
+        pnl_cols = [c for c in data_for_evaluation.columns if c.startswith("Daily_PnL_cluster")]
+        pnl_cols = sorted(pnl_cols)[:5]
+
+        pnl_top5 = data_for_evaluation[pnl_cols].copy()
+        pnl_top5.index = pnl_top5.index.normalize()
+
+        new_names = {}
+        for i, col in enumerate(pnl_cols, start=1):
+            p = strategies[f"cluster {i}"]
+            new_names[col] = f"SMA_{SYMBOL}_hierarchy_Cluster{i}_{p['short_sma']}/{p['long_sma']}"
+        pnl_top5.rename(columns=new_names, inplace=True)
+
+        if os.path.exists(hierarchy_top5_file):
+            master_h = pd.read_pickle(hierarchy_top5_file)
+        else:
+            master_h = pd.DataFrame(index=pnl_top5.index)
+
+        master_h = pd.concat([master_h, pnl_top5], axis=1)
+        master_h.to_pickle(hierarchy_top5_file)
+        logging.info(f"Updated Hierarchical top-5 daily-PnL file: {hierarchy_top5_file}")
         save_plot(f'{SYMBOL}_Hierarchical_Multiple_Strategy_Plots.png', OUTPUT_DIR)
 
 
