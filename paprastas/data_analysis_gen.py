@@ -727,7 +727,7 @@ def plot_strategy_performance(short_sma, long_sma, top_clusters, big_point_value
             master_k = pd.DataFrame(index=pnl_top5.index)
 
         master_k = pd.concat([master_k, pnl_top5], axis=1)
-        master_k.to_pickle(kmeans_top5_file)
+        #FIXME:master_k.to_pickle(kmeans_top5_file)
         logging.info(f"Updated KMeans top-5 daily-PnL file: {kmeans_top5_file}")
 
 
@@ -1073,6 +1073,45 @@ def bimonthly_out_of_sample_comparison(data,
     else:
         save_plot(f'{SYMBOL}_Hierarchical_Bimonthly_Comparison.png', OUTPUT_DIR)
 
+
+    diff_series = (
+        bimonthly_sharpe_df.loc[mask_not_tied, 'Avg_cluster_sharpe_rounded'] -
+        bimonthly_sharpe_df.loc[mask_not_tied, 'Best_sharpe_rounded']
+    )
+
+    if not diff_series.empty:
+        mean_diff = diff_series.mean()
+        skew_val = diff_series.skew()
+        kurt_val = diff_series.kurt()
+
+        plt.figure(figsize=(10, 6))
+        plt.hist(diff_series, bins='auto', color='skyblue', edgecolor='black', alpha=0.7)
+        plt.axvline(mean_diff, color='red', linestyle='--', linewidth=2,
+                    label=f'Average Difference ({mean_diff:.2f})')
+
+        # Add skewness and kurtosis to the legend via invisible handles
+        plt.plot([], [], ' ', label=f'Skewness: {skew_val:.2f}')
+        plt.plot([], [], ' ', label=f'Kurtosis: {kurt_val:.2f}')
+
+        plt.title(
+            f'{SYMBOL} {ANALYSIS_METHOD} Histogram of Rounded Sharpe Differences\n'
+            f'(Avg Cluster - Best)',
+            fontsize=14,
+        )
+        plt.xlabel('Difference in Sharpe Ratio', fontsize=12)
+        plt.ylabel('Frequency', fontsize=12)
+        plt.legend()
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+
+        # Save histogram according to analysis method
+        if ANALYSIS_METHOD.lower() == "kmeans":
+            save_plot(f'{SYMBOL}_KMeans_Difference_Histogram.png', OUTPUT_DIR)
+        else:
+            save_plot(f'{SYMBOL}_Hierarchical_Difference_Histogram.png', OUTPUT_DIR)
+    else:
+        logging.info("No non-tied periods available to plot histogram of Sharpe differences.")
+
     # Save win percentage and cluster parameters to Excel file (let any exceptions propagate)
 
 
@@ -1135,6 +1174,23 @@ def bimonthly_out_of_sample_comparison(data,
     # Write the best Sharpe parameters in column M (13)
     best_sharpe_params = f"{best_short_sma}/{best_long_sma}"
     sheet.cell(row=ticker_row, column=13).value = best_sharpe_params
+
+    # --------------------------------------------------------------
+    # Write skewness & kurtosis to designated columns
+    #   • KMeans       : skew -> AD (30), kurtosis -> AE (31)
+    #   • Hierarchical : skew -> AG (33), kurtosis -> AH (34)
+    # --------------------------------------------------------------
+    if ANALYSIS_METHOD.lower() == "kmeans":
+        skew_col = 30  # AD
+        kurt_col = 31  # AE
+    else:
+        skew_col = 33  # AG
+        kurt_col = 34  # AH
+
+    if not np.isnan(skew_val):
+        sheet.cell(row=ticker_row, column=skew_col).value = round(skew_val, 4)
+    if not np.isnan(kurt_val):
+        sheet.cell(row=ticker_row, column=kurt_col).value = round(kurt_val, 4)
 
     # Save the workbook
     wb.save(excel_file)
