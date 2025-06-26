@@ -676,7 +676,7 @@ def main():
     master = pd.concat([master, pnl_df], axis=1)
 
     # Persist
-    master.to_pickle(pnl_file)
+    #FIXME:master.to_pickle(pnl_file)
     logging.info(f"  ► Wrote master to {pnl_file!r}")
 
 
@@ -691,7 +691,7 @@ def main():
     top5_master = pd.concat([top5_master, pnl_top5], axis=1)
 
     # Persist
-    top5_master.to_pickle(top5_file)
+    #FIXME:top5_master.to_pickle(top5_file)
     logging.info(f"Wrote top‐5 master to {top5_file!r}")
 
 
