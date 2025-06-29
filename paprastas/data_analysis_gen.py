@@ -10,6 +10,12 @@ from datetime import datetime
 import read_ts
 import openpyxl
 import pickle
+import sys, logging
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter(fmt='%(message)s'))
+handler.stream.reconfigure(encoding='utf-8')
+logging.root.handlers = [handler]
+logging.root.setLevel(logging.INFO)
 
 import os
 import matplotlib.pyplot as plt
@@ -754,7 +760,7 @@ def plot_strategy_performance(short_sma, long_sma, top_clusters, big_point_value
             master_h = pd.DataFrame(index=pnl_top5.index)
 
         master_h = pd.concat([master_h, pnl_top5], axis=1)
-        master_h.to_pickle(hierarchy_top5_file)
+        #FIXME:master_h.to_pickle(hierarchy_top5_file)
         logging.info(f"Updated Hierarchical top-5 daily-PnL file: {hierarchy_top5_file}")
 
 
@@ -1080,18 +1086,25 @@ def bimonthly_out_of_sample_comparison(data,
     )
 
     if not diff_series.empty:
+        # — keep your mean line, histogram, etc. —
         mean_diff = diff_series.mean()
-        skew_val = diff_series.skew()
-        kurt_val = diff_series.kurt()
 
         plt.figure(figsize=(10, 6))
         plt.hist(diff_series, bins='auto', color='skyblue', edgecolor='black', alpha=0.7)
         plt.axvline(mean_diff, color='red', linestyle='--', linewidth=2,
                     label=f'Average Difference ({mean_diff:.2f})')
 
-        # Add skewness and kurtosis to the legend via invisible handles
-        plt.plot([], [], ' ', label=f'Skewness: {skew_val:.2f}')
-        plt.plot([], [], ' ', label=f'Kurtosis: {kurt_val:.2f}')
+        # --- NEW: compute 90th/10th‐pct outlier counts ---
+        p_high = 0.90
+        p_low  = 0.10
+        th_pos = diff_series.quantile(p_high)
+        th_neg = diff_series.quantile(p_low)
+        n_pos  = (diff_series >  th_pos).sum()
+        n_neg  = (diff_series <  th_neg).sum()
+
+        # show counts in legend
+        plt.plot([], [], ' ', label=f'>90th pct ({th_pos:.2f}): {n_pos} obs')
+        plt.plot([], [], ' ', label=f'<10th pct ({th_neg:.2f}): {n_neg} obs')
 
         plt.title(
             f'{SYMBOL} {ANALYSIS_METHOD} Histogram of Rounded Sharpe Differences\n'
@@ -1111,6 +1124,7 @@ def bimonthly_out_of_sample_comparison(data,
             save_plot(f'{SYMBOL}_Hierarchical_Difference_Histogram.png', OUTPUT_DIR)
     else:
         logging.info("No non-tied periods available to plot histogram of Sharpe differences.")
+
 
     # Save win percentage and cluster parameters to Excel file (let any exceptions propagate)
 
@@ -1181,24 +1195,25 @@ def bimonthly_out_of_sample_comparison(data,
     #   • Hierarchical : skew -> AG (33), kurtosis -> AH (34)
     # --------------------------------------------------------------
     if ANALYSIS_METHOD.lower() == "kmeans":
-        skew_col = 30  # AD
-        kurt_col = 31  # AE
+        pos_col = 30  # AD
+        neg_col = 31  # AE
     else:
-        skew_col = 33  # AG
-        kurt_col = 34  # AH
+        pos_col = 33  # AG
+        neg_col = 34  # AH
 
-    if not np.isnan(skew_val):
-        sheet.cell(row=ticker_row, column=skew_col).value = round(skew_val, 4)
-    if not np.isnan(kurt_val):
-        sheet.cell(row=ticker_row, column=kurt_col).value = round(kurt_val, 4)
+    # save counts
+    sheet.cell(row=ticker_row, column=pos_col).value = n_pos
+    sheet.cell(row=ticker_row, column=neg_col).value = n_neg
 
     # Save the workbook
     wb.save(excel_file)
 
-    logging.info(f"Excel file updated successfully. Added {SYMBOL} with {ANALYSIS_METHOD} win rate {rounded_win_percentage_1dp}% in row {ticker_row}")
-    logging.info(f"Added best Sharpe parameters {best_sharpe_params} in column M")
+    logging.info(
+        f"Excel file updated successfully. Added {SYMBOL} with {ANALYSIS_METHOD} win rate "
+        f"{rounded_win_percentage_1dp}% in row {ticker_row}; "
+        f">90th pct={n_pos}, <10th pct={n_neg}"
+    )
 
-    # Return the bimonthly Sharpe ratio data
     return bimonthly_sharpe_df
 
 def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_clusters,
