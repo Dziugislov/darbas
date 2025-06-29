@@ -1086,7 +1086,6 @@ def bimonthly_out_of_sample_comparison(data,
     )
 
     if not diff_series.empty:
-        # — keep your mean line, histogram, etc. —
         mean_diff = diff_series.mean()
 
         plt.figure(figsize=(10, 6))
@@ -1094,17 +1093,18 @@ def bimonthly_out_of_sample_comparison(data,
         plt.axvline(mean_diff, color='red', linestyle='--', linewidth=2,
                     label=f'Average Difference ({mean_diff:.2f})')
 
-        # --- NEW: compute 90th/10th‐pct outlier counts ---
-        p_high = 0.90
-        p_low  = 0.10
-        th_pos = diff_series.quantile(p_high)
-        th_neg = diff_series.quantile(p_low)
+
+        sorted_diffs = diff_series.sort_values()
+        k = max(1, int(np.ceil(len(sorted_diffs) * 0.10)))  # 10% of samples, at least 1
+        th_pos = sorted_diffs.iloc[-k]    # kth-largest Δ
+        th_neg = sorted_diffs.iloc[k-1]   # kth-smallest Δ
         n_pos  = (diff_series >  th_pos).sum()
         n_neg  = (diff_series <  th_neg).sum()
 
         # show counts in legend
-        plt.plot([], [], ' ', label=f'>90th pct ({th_pos:.2f}): {n_pos} obs')
-        plt.plot([], [], ' ', label=f'<10th pct ({th_neg:.2f}): {n_neg} obs')
+        plt.plot([], [], ' ', label=f'> {k} largest (Δ≥{th_pos:.2f}): {n_pos} obs')
+        plt.plot([], [], ' ', label=f'< {k} smallest (Δ≤{th_neg:.2f}): {n_neg} obs')
+        # ────────────────────────────────────────────────────────────────
 
         plt.title(
             f'{SYMBOL} {ANALYSIS_METHOD} Histogram of Rounded Sharpe Differences\n'
@@ -1125,93 +1125,40 @@ def bimonthly_out_of_sample_comparison(data,
     else:
         logging.info("No non-tied periods available to plot histogram of Sharpe differences.")
 
+    # … then writing to Excel …
 
-    # Save win percentage and cluster parameters to Excel file (let any exceptions propagate)
-
-
-    # Path to the Excel file
     excel_file = EXCEL_FILE_PATH
-
-    # Ensure the Excel file exists
     if not os.path.exists(excel_file):
         raise FileNotFoundError(f"Excel file not found at: {excel_file}")
 
-    logging.info(f"Updating Excel file with {ANALYSIS_METHOD} results for {SYMBOL}...")
-
-    # Load the workbook
     wb = openpyxl.load_workbook(excel_file)
-
-    # Get the active sheet
     sheet = wb.active
 
-    # Find the row with the ticker symbol or the first empty row
-    row = 3  # Start from row 3 (assuming rows 1-2 have headers)
-    ticker_row = None
-
+    # locate or create row for this SYMBOL
+    row = 3
     while True:
-        cell_value = sheet.cell(row=row, column=1).value
-        if cell_value == SYMBOL:
-            # Found the ticker symbol
-            ticker_row = row
-            break
-        elif cell_value is None:
-            # Found an empty row – write the ticker symbol here
-            ticker_row = row
-            sheet.cell(row=ticker_row, column=1).value = SYMBOL
+        if sheet.cell(row=row, column=1).value in (None, SYMBOL):
+            sheet.cell(row=row, column=1).value = SYMBOL
             break
         row += 1
 
-    # Round the win percentage to one decimal place
-    rounded_win_percentage_1dp = round(rounded_win_percentage, 1)
+    rounded_win = round(rounded_win_percentage, 1)
 
-    # --------------------------------------------------------------
-    # Write results to Excel – choose columns based on analysis type
-    #   • KMeans       : win % -> B (2); clusters -> E/F/G (5–7)
-    #   • Hierarchical : win % -> C (3); clusters -> I/J/K (9–11)
-    # --------------------------------------------------------------
     if ANALYSIS_METHOD.lower() == "kmeans":
-        win_col = 2      # Column B
-        cluster_start_col = 5  # Columns E, F, G
-    else:  # Treat any non-kmeans value as Hierarchical
-        win_col = 3      # Column C
-        cluster_start_col = 9  # Columns I, J, K
-
-    # Write the win percentage
-    sheet.cell(row=ticker_row, column=win_col).value = rounded_win_percentage_1dp
-
-    # Write the cluster parameters (up to 3)
-    for i, cluster in enumerate(filtered_clusters[:3]):
-        column_idx = cluster_start_col + i
-        param_value = f"{int(cluster[0])}/{int(cluster[1])}"
-        sheet.cell(row=ticker_row, column=column_idx).value = param_value
-
-    # Write the best Sharpe parameters in column M (13)
-    best_sharpe_params = f"{best_short_sma}/{best_long_sma}"
-    sheet.cell(row=ticker_row, column=13).value = best_sharpe_params
-
-    # --------------------------------------------------------------
-    # Write skewness & kurtosis to designated columns
-    #   • KMeans       : skew -> AD (30), kurtosis -> AE (31)
-    #   • Hierarchical : skew -> AG (33), kurtosis -> AH (34)
-    # --------------------------------------------------------------
-    if ANALYSIS_METHOD.lower() == "kmeans":
-        pos_col = 30  # AD
-        neg_col = 31  # AE
+        # Win% → B; >k largest → AD(30); <k smallest → AE(31)
+        sheet.cell(row=row, column=2).value  = rounded_win
+        sheet.cell(row=row, column=30).value = int(n_pos)
+        sheet.cell(row=row, column=31).value = int(n_neg)
     else:
-        pos_col = 33  # AG
-        neg_col = 34  # AH
+        # Win% → C; >k largest → AG(33); <k smallest → AH(34)
+        sheet.cell(row=row, column=3).value  = rounded_win
+        sheet.cell(row=row, column=33).value = int(n_pos)
+        sheet.cell(row=row, column=34).value = int(n_neg)
 
-    # save counts
-    sheet.cell(row=ticker_row, column=pos_col).value = n_pos
-    sheet.cell(row=ticker_row, column=neg_col).value = n_neg
-
-    # Save the workbook
     wb.save(excel_file)
-
     logging.info(
-        f"Excel file updated successfully. Added {SYMBOL} with {ANALYSIS_METHOD} win rate "
-        f"{rounded_win_percentage_1dp}% in row {ticker_row}; "
-        f">90th pct={n_pos}, <10th pct={n_neg}"
+        f"Excel updated for {SYMBOL}: win%={rounded_win}%, "
+        f">{k} largest={n_pos}, <{k} smallest={n_neg}"
     )
 
     return bimonthly_sharpe_df
