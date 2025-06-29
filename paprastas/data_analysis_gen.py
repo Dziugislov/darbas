@@ -1137,31 +1137,44 @@ def bimonthly_out_of_sample_comparison(data,
     # locate or create row for this SYMBOL
     row = 3
     while True:
-        if sheet.cell(row=row, column=1).value in (None, SYMBOL):
+        val = sheet.cell(row=row, column=1).value
+        if val in (None, SYMBOL):
             sheet.cell(row=row, column=1).value = SYMBOL
             break
         row += 1
 
+    # write rounded win percentage
     rounded_win = round(rounded_win_percentage, 1)
-
     if ANALYSIS_METHOD.lower() == "kmeans":
-        # Win% → B; >k largest → AD(30); <k smallest → AE(31)
         sheet.cell(row=row, column=2).value  = rounded_win
         sheet.cell(row=row, column=30).value = int(n_pos)
         sheet.cell(row=row, column=31).value = int(n_neg)
     else:
-        # Win% → C; >k largest → AG(33); <k smallest → AH(34)
         sheet.cell(row=row, column=3).value  = rounded_win
         sheet.cell(row=row, column=33).value = int(n_pos)
         sheet.cell(row=row, column=34).value = int(n_neg)
 
+    # write top‐3 cluster SMA pairs
+    if ANALYSIS_METHOD.lower() == "kmeans":
+        cluster_start_col = 5   # E, F, G
+    else:
+        cluster_start_col = 9   # I, J, K
+    for i, (s_sma, l_sma, *_) in enumerate(filtered_clusters[:3]):
+        sheet.cell(row=row, column=cluster_start_col + i).value = f"{int(s_sma)}/{int(l_sma)}"
+
+    # write best‐Sharpe SMA pair into column M (13)
+    sheet.cell(row=row, column=13).value = f"{best_short_sma}/{best_long_sma}"
+
     wb.save(excel_file)
     logging.info(
-        f"Excel updated for {SYMBOL}: win%={rounded_win}%, "
-        f">{k} largest={n_pos}, <{k} smallest={n_neg}"
+        f"Excel updated for {SYMBOL} (row {row}): "
+        f"win%={rounded_win}%, "
+        f"clusters={[f'{int(s)}/{int(l)}' for s, l, *_, in filtered_clusters[:3]]}, "
+        f"best={best_short_sma}/{best_long_sma}"
     )
 
     return bimonthly_sharpe_df
+
 
 def analyze_full_oos_performance(data, best_short_sma, best_long_sma, top_clusters,
                             big_point_value, slippage, capital=TRADING_CAPITAL, atr_period=ATR_PERIOD,
